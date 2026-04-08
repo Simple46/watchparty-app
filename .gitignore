@@ -1,4 +1,6 @@
 node_modules/
 .env
 
-# https://watchparty-app-backend.onrender.com
+# NEXT_PUBLIC_BACKEND_URL=https://watchparty-app-backend.onrender.com
+
+# live server watchparty-i5mmisc1f-hissa-olayiwolas-projects.vercel.app

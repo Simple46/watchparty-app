@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// USERS TABLE
+// ─────────────────────────────────────────
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("user")
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hostedRooms Room[]       @relation("HostedRooms")
+  roomMembers RoomMember[]
+}
+
+// ─────────────────────────────────────────
+// MOVIES TABLE
+// ─────────────────────────────────────────
+model Movie {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  videoUrl    String
+  thumbnail   String?
+  b2FileId    String
+  b2FileName  String
+  duration    Int?
+  size        Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rooms Room[]
+}
+
+// ─────────────────────────────────────────
+// ROOMS TABLE
+// ─────────────────────────────────────────
+model Room {
+  id        String   @id @default(uuid())
+  roomCode  String   @unique
+  isActive  Boolean  @default(true)
+  movieId   String
+  hostId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movie   Movie        @relation(fields: [movieId], references: [id])
+  host    User         @relation("HostedRooms", fields: [hostId], references: [id])
+  members RoomMember[]
+}
+
+// ─────────────────────────────────────────
+// ROOMMEMBERS TABLE
+// ─────────────────────────────────────────
+model RoomMember {
+  id       String   @id @default(uuid())
+  roomId   String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
