@@ -55,9 +55,10 @@ app.get("/", (req, res) => {
 // Database test route
 app.get("/test-db", async (req, res) => {
   try {
-    // const userCount = await db.user.count();
+    const userCount = await db.user.count();
     res.json({
       message: "Database connected successfully ✅",
+      totalUser: userCount,
     });
   } catch (error) {
     res.status(500).json({
