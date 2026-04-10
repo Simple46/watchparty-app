@@ -58,7 +58,7 @@ app.get("/test-db", async (req, res) => {
     const userCount = await db.user.count();
     res.json({
       message: "Database connected successfully ✅",
-      totalUser: userCount,
+      totalUsers: userCount,
     });
   } catch (error) {
     res.status(500).json({

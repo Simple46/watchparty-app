@@ -33,8 +33,9 @@ model Movie {
   description String?
   videoUrl    String
   thumbnail   String?
-  b2FileId    String
-  b2FileName  String
+  cloudinaryId String
+  cloudinaryName String
+ 
   duration    Int?
   size        Float?
   createdAt   DateTime @default(now())
