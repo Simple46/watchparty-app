@@ -33,8 +33,10 @@ model Movie {
   description String?
   videoUrl    String
   thumbnail   String?
+   subtitleUrl     String? 
+  subtitleCloudinaryId String? 
   cloudinaryId String
-  cloudinaryName String
+  cloudinaryName String?
  
   duration    Int?
   size        Float?
