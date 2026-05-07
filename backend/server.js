@@ -22,12 +22,61 @@ const io = new Server(server, {
   },
 });
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  // Add your actual Vercel URL here
+  "https://watchparty-app-omega.vercel.app/",
+  // Also allow any Vercel preview URLs
+  /https:\/\/.*\.vercel\.app$/,
+];
+
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: function (origin, callback) {
+      // Allow requests with no origin
+      // This covers Postman, mobile apps, and server-to-server calls
+      if (!origin) return callback(null, true);
+
+      // Check if the origin is in our allowed list
+      const isAllowed = allowedOrigins.some((allowed) => {
+        if (typeof allowed === "string") {
+          return allowed === origin;
+        }
+        // For regex patterns like our Vercel preview URL pattern
+        return allowed.test(origin);
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.error(`CORS blocked: ${origin}`);
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+      }
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+    ],
   }),
 );
+
+// Handle preflight requests explicitly
+// This catches OPTIONS requests before they hit your routes
+app.options("*", cors());
+
+// app.use(
+//   cors({
+//     origin: process.env.FRONTEND_URL || "http://localhost:3000",
+//     credentials: true,
+//   }),
+// );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
