@@ -104,14 +104,12 @@ const register = async (req, res) => {
       },
     });
   } catch (error) {
-    console.log("Register Error");
-
+    // If anything above threw an unexpected error, catch it here
+    // Log it for debugging but send a generic message to the user
+    // Never send the actual error to the frontend — it exposes your code
     console.error("Register error:", error);
     res.status(500).json({
       message: "Something went wrong. Please try again.",
-      ...(process.env.NODE_ENV !== "production" && {
-        error: error.message,
-      }),
     });
   }
 };
@@ -180,9 +178,6 @@ const login = async (req, res) => {
     console.error("Login error:", error);
     res.status(500).json({
       message: "Something went wrong. Please try again.",
-      ...(process.env.NODE_ENV !== "production" && {
-        error: error.message,
-      }),
     });
   }
 };
@@ -223,7 +218,6 @@ const getMe = async (req, res) => {
 
     res.status(200).json({ user: user });
   } catch (error) {
-
     console.error("GetMe error:", error);
     res.status(500).json({
       message: "Something went wrong",

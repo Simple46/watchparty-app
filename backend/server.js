@@ -8,7 +8,8 @@ const db = require("./utils/db");
 
 // Import routes
 const authRoutes = require("./routes/authRoutes");
-const adminRoutes = require("./routes/adminRoutes"); // ← add this line
+const adminRoutes = require("./routes/adminRoutes");
+const movieRoutes = require("./routes/movieRoutes");
 
 dotenv.config();
 
@@ -30,7 +31,6 @@ const allowedOrigins = [
   // Also allow any Vercel preview URLs
   /https:\/\/.*\.vercel\.app$/,
 ];
-
 
 app.use(
   cors({
@@ -69,7 +69,7 @@ app.use(
 
 // Handle preflight requests explicitly
 // This catches OPTIONS requests before they hit your routes
-app.options("*", cors());
+app.options(/.*/, cors());
 
 // app.use(
 //   cors({
@@ -80,6 +80,7 @@ app.options("*", cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use("/api/movies", movieRoutes);
 
 // Base route
 app.get("/", (req, res) => {
