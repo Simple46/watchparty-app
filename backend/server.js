@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const http = require("http");
 const { Server } = require("socket.io");
 const cookieParser = require("cookie-parser");
-const db = require("./utils/db");
+const { db, safeQuery } = require("./utils/db");
 
 // Import routes
 const authRoutes = require("./routes/authRoutes");
@@ -18,42 +18,36 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (
+        origin.includes("localhost") ||
+        origin.includes(".vercel.app") ||
+        origin === process.env.FRONTEND_URL
+      ) {
+        return callback(null, true);
+      }
+      callback(new Error("Not allowed by CORS"));
+    },
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  // Add your actual Vercel URL here
-  "https://watchparty-app-omega.vercel.app/",
-  // Also allow any Vercel preview URLs
-  /https:\/\/.*\.vercel\.app$/,
-];
-
+// ─── CORS ───
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin
-      // This covers Postman, mobile apps, and server-to-server calls
       if (!origin) return callback(null, true);
-
-      // Check if the origin is in our allowed list
-      const isAllowed = allowedOrigins.some((allowed) => {
-        if (typeof allowed === "string") {
-          return allowed === origin;
-        }
-        // For regex patterns like our Vercel preview URL pattern
-        return allowed.test(origin);
-      });
-
-      if (isAllowed) {
-        callback(null, true);
-      } else {
-        console.error(`CORS blocked: ${origin}`);
-        callback(new Error(`Origin ${origin} not allowed by CORS`));
+      if (
+        origin.includes("localhost") ||
+        origin.includes(".vercel.app") ||
+        origin === process.env.FRONTEND_URL
+      ) {
+        return callback(null, true);
       }
+      console.error(`CORS blocked: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -64,38 +58,38 @@ app.use(
       "Accept",
       "Origin",
     ],
+    optionsSuccessStatus: 200,
   }),
 );
 
-// Handle preflight requests explicitly
-// This catches OPTIONS requests before they hit your routes
+// Handle ALL preflight requests immediately
 app.options(/.*/, cors());
 
-// app.use(
-//   cors({
-//     origin: process.env.FRONTEND_URL || "http://localhost:3000",
-//     credentials: true,
-//   }),
-// );
+// ─── MIDDLEWARE ───
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use("/api/movies", movieRoutes);
 
-// Base route
+// ─── BASE ROUTE ───
 app.get("/", (req, res) => {
-  res.json({ message: "WatchParty API is running ✅" });
+  res.json({
+    message: "WatchParty API is running ✅",
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Database test route
+// ─── DATABASE TEST ROUTE ───
+// Uses safeQuery so it automatically reconnects if needed
 app.get("/test-db", async (req, res) => {
   try {
-    const userCount = await db.user.count();
+    const userCount = await safeQuery((db) => db.user.count());
     res.json({
       message: "Database connected successfully ✅",
       totalUsers: userCount,
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    console.error("Database test failed:", error.message);
     res.status(500).json({
       message: "Database connection failed ❌",
       error: error.message,
@@ -103,15 +97,58 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
-// Mount routes
+// ─── ROUTES ───
 app.use("/api/auth", authRoutes);
-app.use("/api/admin", adminRoutes); // ← add this line
+app.use("/api/admin", adminRoutes);
+app.use("/api/movies", movieRoutes);
 
-// More routes coming in later sections
-// app.use("/api/movies", movieRoutes);
-// app.use("/api/rooms", roomRoutes);
+// ─── GLOBAL ERROR HANDLER ───
+// Catches any unhandled errors in routes
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err.message);
+  res.status(500).json({
+    message: "Something went wrong. Please try again.",
+  });
+});
 
+// ─── START SERVER ───
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} 🚀`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📅 Started at: ${new Date().toISOString()}`);
 });
+
+// ─── KEEP RENDER ALIVE ───
+// Render free tier spins down after 15 minutes
+// We ping ourselves every 14 minutes to prevent this
+if (process.env.NODE_ENV === "production") {
+  const BACKEND_URL =
+    process.env.RENDER_EXTERNAL_URL ||
+    "https://watchparty-backend.onrender.com";
+
+  // Initial delay of 1 minute before starting pings
+  // Gives the server time to fully boot up first
+  setTimeout(() => {
+    setInterval(
+      async () => {
+        try {
+          const https = require("https");
+          https
+            .get(`${BACKEND_URL}/`, (res) => {
+              console.log(
+                `💓 Keep-alive ping — status: ${res.statusCode} — ${new Date().toISOString()}`,
+              );
+            })
+            .on("error", (err) => {
+              console.error("Keep-alive ping failed:", err.message);
+            });
+        } catch (error) {
+          console.error("Keep-alive error:", error.message);
+        }
+      },
+      14 * 60 * 1000,
+    ); // every 14 minutes
+
+    console.log("💓 Keep-alive ping scheduled every 14 minutes ✅");
+  }, 60 * 1000);
+}

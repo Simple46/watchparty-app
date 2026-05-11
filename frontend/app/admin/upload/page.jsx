@@ -8,40 +8,29 @@ import api from "../../../lib/api";
 export default function UploadMoviePage() {
   const router = useRouter();
 
-  // Form field values
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-
-  // Selected file objects
   const [videoFile, setVideoFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
-
-  // Preview URL for the thumbnail image
-  // Created from the selected file so admin can see it before uploading
   const [thumbnailPreview, setThumbnailPreview] = useState(null);
 
-  // Upload state tracking
-  // idle → uploading → success → error
+  // Upload tracking
   const [uploadState, setUploadState] = useState("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Ref for hidden file inputs — we trigger them programmatically
   const videoInputRef = useRef(null);
   const thumbnailInputRef = useRef(null);
 
-  // ─── Handle video file selection ───
+  // ─── File selection handlers ───
   const handleVideoSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Check file size — reject anything over 500MB
     const fileSizeMB = file.size / (1024 * 1024);
-    if (fileSizeMB > 500) {
-      setErrorMessage(
-        `File too large: ${fileSizeMB.toFixed(0)}MB. Maximum is 500MB.`,
-      );
+    if (fileSizeMB > 2000) {
+      setErrorMessage("File too large. Maximum is 2GB.");
       return;
     }
 
@@ -49,47 +38,134 @@ export default function UploadMoviePage() {
     setErrorMessage("");
   };
 
-  // ─── Handle thumbnail file selection ───
   const handleThumbnailSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setThumbnailFile(file);
-
-    // Create a local preview URL so admin can see the thumbnail
-    // URL.createObjectURL creates a temporary browser URL for the file
-    const previewUrl = URL.createObjectURL(file);
-    setThumbnailPreview(previewUrl);
+    setThumbnailPreview(URL.createObjectURL(file));
     setErrorMessage("");
   };
 
-  // ─── Remove selected video ───
   const removeVideo = () => {
     setVideoFile(null);
-    // Reset the file input so the same file can be selected again
     if (videoInputRef.current) videoInputRef.current.value = "";
   };
 
-  // ─── Remove selected thumbnail ───
   const removeThumbnail = () => {
     setThumbnailFile(null);
     setThumbnailPreview(null);
     if (thumbnailInputRef.current) thumbnailInputRef.current.value = "";
   };
 
-  // ─── Format file size for display ───
   const formatFileSize = (bytes) => {
     const mb = bytes / (1024 * 1024);
     if (mb >= 1000) return `${(mb / 1024).toFixed(1)} GB`;
     return `${mb.toFixed(1)} MB`;
   };
 
-  // ─── Handle form submission ───
+  // ─── DIRECT CLOUDINARY UPLOAD ───
+  // This uploads the file directly from the browser to Cloudinary
+  // Your backend is not involved in the file transfer at all
+  const uploadToCloudinaryDirect = (
+    file,
+    signature,
+    timestamp,
+    folder,
+    cloudName,
+    apiKey,
+  ) => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("signature", signature);
+      formData.append("timestamp", timestamp);
+      formData.append("folder", folder);
+      formData.append("api_key", apiKey);
+      formData.append("eager", "c_limit,w_1280,h_720/q_auto/f_mp4");
+      formData.append("eager_async", "true");
+
+      // Use XMLHttpRequest instead of fetch or axios
+      // because XHR gives us upload progress events
+      // fetch and axios do not support upload progress natively
+      const xhr = new XMLHttpRequest();
+
+      // This fires repeatedly as the upload progresses
+      // loaded = bytes sent so far, total = total bytes
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percent);
+
+          // Update the progress message based on percentage
+          if (percent < 30) {
+            setProgressMessage(`Uploading to Cloudinary... ${percent}%`);
+          } else if (percent < 70) {
+            setProgressMessage(`Still uploading... ${percent}%`);
+          } else if (percent < 100) {
+            setProgressMessage(`Almost done... ${percent}%`);
+          } else {
+            setProgressMessage("Processing video on Cloudinary servers...");
+          }
+        }
+      });
+
+      // Fires when upload completes successfully
+      xhr.addEventListener("load", () => {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } else {
+          const error = JSON.parse(xhr.responseText);
+          reject(new Error(error.error?.message || "Upload failed"));
+        }
+      });
+
+      // Fires if there is a network error
+      xhr.addEventListener("error", () => {
+        reject(new Error("Network error during upload"));
+      });
+
+      // The Cloudinary upload endpoint uses your cloud name
+      xhr.open(
+        "POST",
+        `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
+      );
+
+      xhr.send(formData);
+    });
+  };
+
+  // ─── THUMBNAIL UPLOAD ───
+  const uploadThumbnailDirect = async (cloudName, apiKey, apiSecret) => {
+    const timestamp = Math.round(new Date().getTime() / 1000);
+    const folder = "watchparty/thumbnails";
+
+    // Generate signature for thumbnail
+    // We need to call our backend for this
+    const sigResponse = await api.get(
+      "/api/admin/cloudinary-signature?type=image",
+    );
+
+    const formData = new FormData();
+    formData.append("file", thumbnailFile);
+    formData.append("signature", sigResponse.data.signature);
+    formData.append("timestamp", sigResponse.data.timestamp);
+    formData.append("folder", "watchparty/thumbnails");
+    formData.append("api_key", apiKey);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      { method: "POST", body: formData },
+    );
+
+    return await response.json();
+  };
+
+  // ─── FORM SUBMIT ───
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage("");
 
-    // Validate required fields
     if (!title.trim()) {
       setErrorMessage("Please enter a movie title");
       return;
@@ -99,67 +175,70 @@ export default function UploadMoviePage() {
       return;
     }
 
-    // Build FormData — required for file uploads
-    // JSON cannot send files, only FormData can
-    const formData = new FormData();
-    formData.append("title", title.trim());
-    formData.append("description", description.trim());
-    formData.append("video", videoFile);
-    if (thumbnailFile) {
-      formData.append("thumbnail", thumbnailFile);
-    }
-
     setUploadState("uploading");
     setUploadProgress(0);
 
     try {
-      // Stage 1 — Compression (happens on server, we simulate progress)
-      setProgressMessage("Compressing video with FFmpeg...");
-      setUploadProgress(10);
+      // Step 1 — Get upload signature from your backend
+      // This is a tiny fast request that takes milliseconds
+      setProgressMessage("Preparing secure upload...");
+      const sigResponse = await api.get("/api/admin/cloudinary-signature");
 
-      // We use axios directly here so we can track upload progress
-      // onUploadProgress fires as the file is being sent to your backend
-      const response = await api.post("/api/admin/upload", formData, {
-        headers: {
-          // Do NOT set Content-Type here — axios sets it automatically
-          // for FormData with the correct multipart boundary
-          "Content-Type": "multipart/form-data",
-        },
-        onUploadProgress: (progressEvent) => {
-          // This tracks how much of the file has been sent to YOUR backend
-          // not the Cloudinary upload — that happens server-side
-          const percentSent = Math.round(
-            (progressEvent.loaded * 80) / progressEvent.total,
-          );
-          // We show 10-90% for the transfer phase
-          // leaving 90-100% for the server-side Cloudinary upload
-          setUploadProgress(10 + percentSent);
+      const { signature, timestamp, folder, cloudName, apiKey } =
+        sigResponse.data;
 
-          if (percentSent < 30) {
-            setProgressMessage("Compressing video...");
-          } else if (percentSent < 60) {
-            setProgressMessage("Uploading to Cloudinary...");
-          } else {
-            setProgressMessage("Saving to database...");
-          }
-        },
+      // Step 2 — Upload video directly from browser to Cloudinary
+      // This bypasses your Render backend entirely for the file transfer
+      // The progress bar updates in real time as the file uploads
+      setProgressMessage("Uploading video directly to Cloudinary...");
+
+      const cloudinaryResponse = await uploadToCloudinaryDirect(
+        videoFile,
+        signature,
+        timestamp,
+        folder,
+        cloudName,
+        apiKey,
+      );
+
+      setUploadProgress(100);
+      setProgressMessage("Video uploaded! Saving details...");
+
+      // Step 3 — Upload thumbnail if provided
+      let thumbnailUrl = null;
+      if (thumbnailFile) {
+        setProgressMessage("Uploading cover image...");
+        const thumbResponse = await uploadThumbnailDirect(cloudName, apiKey);
+        thumbnailUrl = thumbResponse.secure_url;
+      }
+
+      // Step 4 — Tell your backend to save the movie to database
+      // This is a tiny request — just sending URLs and metadata
+      // No file data is sent to your backend at all
+      setProgressMessage("Saving to your library...");
+
+      await api.post("/api/admin/save-movie", {
+        title: title.trim(),
+        description: description.trim(),
+        videoUrl: cloudinaryResponse.secure_url,
+        cloudinaryId: cloudinaryResponse.public_id,
+        thumbnail: thumbnailUrl,
+        size: parseFloat((videoFile.size / (1024 * 1024)).toFixed(2)),
+        duration: cloudinaryResponse.duration
+          ? Math.round(cloudinaryResponse.duration)
+          : null,
       });
 
-      // Upload complete
-      setUploadProgress(100);
-      setProgressMessage("Upload complete!");
       setUploadState("success");
     } catch (err) {
+      console.error("Upload error:", err);
       setUploadState("error");
       setErrorMessage(
-        err.response?.data?.message ||
-          "Upload failed. Please check your connection and try again.",
+        err.message || "Upload failed. Check your connection and try again.",
       );
-      console.error("Upload error:", err);
     }
   };
 
-  // ─── Reset form after success or error ───
   const resetForm = () => {
     setTitle("");
     setDescription("");
@@ -183,16 +262,16 @@ export default function UploadMoviePage() {
                         rounded-2xl p-10 text-center"
         >
           <div
-            className="w-16 h-16 bg-green-600/20 border border-green-600/30
-                          rounded-full flex items-center justify-center
-                          mx-auto mb-5"
+            className="w-16 h-16 bg-green-600/20 border
+                          border-green-600/30 rounded-full flex
+                          items-center justify-center mx-auto mb-5"
           >
             <CheckCircle className="w-8 h-8 text-green-400" />
           </div>
           <h2 className="text-white text-xl font-bold mb-2">Movie Uploaded!</h2>
           <p className="text-gray-400 text-sm mb-8">
             <span className="text-white font-medium">{title}</span> has been
-            compressed, uploaded to Cloudinary, and saved to your database.
+            uploaded to Cloudinary and saved to your library.
           </p>
           <div className="flex gap-3">
             <button
@@ -217,95 +296,85 @@ export default function UploadMoviePage() {
     );
   }
 
+  // ─── ERROR STATE ───
+  if (uploadState === "error") {
+    return (
+      <div className="max-w-xl mx-auto">
+        <div
+          className="bg-gray-900 border border-red-600/30
+                        rounded-2xl p-10 text-center"
+        >
+          <div
+            className="w-16 h-16 bg-red-600/20 border
+                          border-red-600/30 rounded-full flex
+                          items-center justify-center mx-auto mb-5"
+          >
+            <AlertCircle className="w-8 h-8 text-red-400" />
+          </div>
+          <h2 className="text-white text-xl font-bold mb-2">Upload Failed</h2>
+          <p className="text-red-400 text-sm mb-8">{errorMessage}</p>
+          <button
+            onClick={resetForm}
+            className="w-full px-4 py-3 bg-red-600 hover:bg-red-700
+                       text-white text-sm font-medium rounded-lg
+                       transition"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ─── UPLOADING STATE ───
   if (uploadState === "uploading") {
     return (
       <div className="max-w-xl mx-auto">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10">
+        <div
+          className="bg-gray-900 border border-gray-800
+                        rounded-2xl p-10"
+        >
           <div className="text-center mb-8">
             <div
-              className="w-16 h-16 bg-red-600/20 border border-red-600/30
-                            rounded-full flex items-center justify-center
-                            mx-auto mb-5"
+              className="w-16 h-16 bg-red-600/20 border
+                            border-red-600/30 rounded-full flex
+                            items-center justify-center mx-auto mb-5"
             >
               <Upload className="w-7 h-7 text-red-400 animate-bounce" />
             </div>
-            <h2 className="text-white text-xl font-bold mb-2">
-              Uploading Movie...
-            </h2>
+            <h2 className="text-white text-xl font-bold mb-2">Uploading...</h2>
             <p className="text-gray-400 text-sm">
-              Do not close this page until the upload finishes
+              Please keep this tab open until the upload finishes
             </p>
           </div>
 
-          {/* Progress bar */}
-          <div className="mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <p className="text-gray-400 text-xs">{progressMessage}</p>
-              <p className="text-white text-xs font-bold">{uploadProgress}%</p>
-            </div>
-            <div className="w-full bg-gray-800 rounded-full h-3">
-              <div
-                className="bg-red-600 h-3 rounded-full transition-all
-                           duration-500"
-                style={{ width: `${uploadProgress}%` }}
-              />
-            </div>
+          {/* Progress percentage */}
+          <div className="mb-2 flex justify-between items-center">
+            <p className="text-gray-400 text-xs">{progressMessage}</p>
+            <p className="text-white text-sm font-bold">{uploadProgress}%</p>
           </div>
 
-          {/* Steps indicator */}
-          <div className="space-y-3 mt-6">
-            {[
-              {
-                label: "Compressing with FFmpeg",
-                done: uploadProgress >= 30,
-              },
-              {
-                label: "Uploading to Cloudinary",
-                done: uploadProgress >= 70,
-              },
-              {
-                label: "Saving to database",
-                done: uploadProgress >= 95,
-              },
-            ].map((step, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div
-                  className={`
-                    w-5 h-5 rounded-full border-2 flex items-center
-                    justify-center flex-shrink-0 transition-all duration-300
-                    ${
-                      step.done
-                        ? "border-green-500 bg-green-500"
-                        : "border-gray-700"
-                    }
-                  `}
-                >
-                  {step.done && (
-                    <svg
-                      className="w-3 h-3 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={3}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  )}
-                </div>
-                <p
-                  className={`text-sm ${
-                    step.done ? "text-green-400" : "text-gray-500"
-                  }`}
-                >
-                  {step.label}
-                </p>
-              </div>
-            ))}
+          {/* Progress bar */}
+          <div className="w-full bg-gray-800 rounded-full h-3 mb-6">
+            <div
+              className="bg-red-600 h-3 rounded-full transition-all
+                         duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+
+          {/* File size info */}
+          <div className="bg-gray-800 rounded-lg p-4 text-center">
+            <p className="text-gray-400 text-xs">
+              Uploading{" "}
+              <span className="text-white font-medium">
+                {formatFileSize(videoFile?.size || 0)}
+              </span>{" "}
+              directly to Cloudinary
+            </p>
+            <p className="text-gray-500 text-xs mt-1">
+              Speed depends on your internet connection
+            </p>
           </div>
         </div>
       </div>
@@ -315,16 +384,14 @@ export default function UploadMoviePage() {
   // ─── IDLE / FORM STATE ───
   return (
     <div className="max-w-2xl">
-      {/* Page header */}
       <div className="mb-8">
         <h1 className="text-white text-2xl font-bold">Upload New Movie</h1>
         <p className="text-gray-400 text-sm mt-1">
-          Videos are automatically compressed before uploading to save storage
+          Videos upload directly to Cloudinary for maximum speed
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Error Banner */}
         {errorMessage && (
           <div
             className="flex items-start gap-3 bg-red-500/10
@@ -336,9 +403,12 @@ export default function UploadMoviePage() {
           </div>
         )}
 
-        {/* Movie Title */}
+        {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label
+            className="block text-sm font-medium
+                             text-gray-300 mb-2"
+          >
             Movie Title <span className="text-red-500">*</span>
           </label>
           <input
@@ -347,16 +417,19 @@ export default function UploadMoviePage() {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Inception, The Dark Knight"
             required
-            className="w-full bg-gray-800 text-white placeholder-gray-500
-                       border border-gray-700 rounded-lg px-4 py-3 text-sm
-                       focus:outline-none focus:border-red-500
-                       focus:ring-1 focus:ring-red-500 transition"
+            className="w-full bg-gray-800 text-white
+                       placeholder-gray-500 border border-gray-700
+                       rounded-lg px-4 py-3 text-sm focus:outline-none
+                       focus:border-red-500 transition"
           />
         </div>
 
-        {/* Movie Description */}
+        {/* Description */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label
+            className="block text-sm font-medium
+                             text-gray-300 mb-2"
+          >
             Description{" "}
             <span className="text-gray-500 font-normal">(optional)</span>
           </label>
@@ -365,20 +438,21 @@ export default function UploadMoviePage() {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief description of the movie..."
             rows={3}
-            className="w-full bg-gray-800 text-white placeholder-gray-500
-                       border border-gray-700 rounded-lg px-4 py-3 text-sm
-                       focus:outline-none focus:border-red-500
-                       focus:ring-1 focus:ring-red-500 transition resize-none"
+            className="w-full bg-gray-800 text-white
+                       placeholder-gray-500 border border-gray-700
+                       rounded-lg px-4 py-3 text-sm focus:outline-none
+                       focus:border-red-500 transition resize-none"
           />
         </div>
 
-        {/* Video File Upload */}
+        {/* Video File */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label
+            className="block text-sm font-medium
+                             text-gray-300 mb-2"
+          >
             Video File <span className="text-red-500">*</span>
           </label>
-
-          {/* Hidden file input */}
           <input
             ref={videoInputRef}
             type="file"
@@ -386,16 +460,15 @@ export default function UploadMoviePage() {
             onChange={handleVideoSelect}
             className="hidden"
           />
-
           {videoFile ? (
-            // Show selected file info
             <div
               className="flex items-center gap-4 bg-gray-800
                             border border-green-600/40 rounded-lg p-4"
             >
               <div
                 className="w-10 h-10 bg-green-600/20 rounded-lg
-                              flex items-center justify-center flex-shrink-0"
+                              flex items-center justify-center
+                              flex-shrink-0"
               >
                 <Film className="w-5 h-5 text-green-400" />
               </div>
@@ -410,25 +483,23 @@ export default function UploadMoviePage() {
               <button
                 type="button"
                 onClick={removeVideo}
-                className="text-gray-500 hover:text-red-400 transition
-                           flex-shrink-0"
+                className="text-gray-500 hover:text-red-400 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
           ) : (
-            // Show upload drop zone
             <button
               type="button"
               onClick={() => videoInputRef.current?.click()}
               className="w-full border-2 border-dashed border-gray-700
-                         hover:border-red-500/50 rounded-xl p-8
-                         flex flex-col items-center gap-3
-                         transition cursor-pointer group"
+                         hover:border-red-500/50 rounded-xl p-8 flex
+                         flex-col items-center gap-3 transition group"
             >
               <div
-                className="w-12 h-12 bg-gray-800 group-hover:bg-red-600/10
-                              rounded-xl flex items-center justify-center
+                className="w-12 h-12 bg-gray-800
+                              group-hover:bg-red-600/10 rounded-xl
+                              flex items-center justify-center
                               transition"
               >
                 <Upload
@@ -441,21 +512,22 @@ export default function UploadMoviePage() {
                   Click to select video
                 </p>
                 <p className="text-gray-500 text-xs mt-1">
-                  MP4, MKV, AVI, MOV, WebM up to 500MB
+                  MP4, MKV, AVI, MOV up to 2GB
                 </p>
               </div>
             </button>
           )}
         </div>
 
-        {/* Thumbnail Upload */}
+        {/* Thumbnail */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label
+            className="block text-sm font-medium
+                             text-gray-300 mb-2"
+          >
             Cover Image{" "}
             <span className="text-gray-500 font-normal">(optional)</span>
           </label>
-
-          {/* Hidden thumbnail input */}
           <input
             ref={thumbnailInputRef}
             type="file"
@@ -463,18 +535,16 @@ export default function UploadMoviePage() {
             onChange={handleThumbnailSelect}
             className="hidden"
           />
-
           {thumbnailFile ? (
-            // Show thumbnail preview
             <div
               className="flex items-center gap-4 bg-gray-800
                             border border-green-600/40 rounded-lg p-4"
             >
-              {/* Actual image preview */}
               <img
                 src={thumbnailPreview}
-                alt="Thumbnail preview"
-                className="w-16 h-10 object-cover rounded-md flex-shrink-0"
+                alt="preview"
+                className="w-16 h-10 object-cover rounded-md
+                           flex-shrink-0"
               />
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-medium truncate">
@@ -487,8 +557,7 @@ export default function UploadMoviePage() {
               <button
                 type="button"
                 onClick={removeThumbnail}
-                className="text-gray-500 hover:text-red-400
-                           transition flex-shrink-0"
+                className="text-gray-500 hover:text-red-400 transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -498,13 +567,13 @@ export default function UploadMoviePage() {
               type="button"
               onClick={() => thumbnailInputRef.current?.click()}
               className="w-full border-2 border-dashed border-gray-700
-                         hover:border-red-500/50 rounded-xl p-6
-                         flex flex-col items-center gap-3
-                         transition cursor-pointer group"
+                         hover:border-red-500/50 rounded-xl p-6 flex
+                         flex-col items-center gap-3 transition group"
             >
               <div
-                className="w-10 h-10 bg-gray-800 group-hover:bg-red-600/10
-                              rounded-xl flex items-center justify-center
+                className="w-10 h-10 bg-gray-800
+                              group-hover:bg-red-600/10 rounded-xl
+                              flex items-center justify-center
                               transition"
               >
                 <Image
@@ -516,38 +585,36 @@ export default function UploadMoviePage() {
                 <p className="text-white text-sm font-medium">
                   Click to select cover image
                 </p>
-                <p className="text-gray-500 text-xs mt-1">
-                  JPEG, PNG or WebP up to 5MB
-                </p>
+                <p className="text-gray-500 text-xs mt-1">JPEG, PNG or WebP</p>
               </div>
             </button>
           )}
         </div>
 
-        {/* Info box about compression */}
+        {/* Speed info box */}
         <div
-          className="bg-blue-600/10 border border-blue-600/20
+          className="bg-green-600/10 border border-green-600/20
                         rounded-lg p-4"
         >
-          <p className="text-blue-400 text-xs font-medium mb-1">
-            ℹ️ About Video Compression
+          <p className="text-green-400 text-xs font-medium mb-1">
+            ⚡ Fast Direct Upload
           </p>
           <p className="text-gray-400 text-xs leading-relaxed">
-            Your video will be automatically compressed to 720p using FFmpeg
-            before uploading to Cloudinary. This saves storage space while
-            keeping good quality. Large videos may take several minutes to
-            process.
+            Your video uploads directly from your browser to Cloudinary — it
+            does not go through our server first. This means faster uploads and
+            real-time progress. Cloudinary automatically optimizes the video
+            quality on their servers.
           </p>
         </div>
 
-        {/* Submit Button */}
+        {/* Submit */}
         <button
           type="submit"
           disabled={!videoFile || !title.trim()}
           className="w-full bg-red-600 hover:bg-red-700
                      disabled:bg-gray-700 disabled:text-gray-500
-                     disabled:cursor-not-allowed text-white font-semibold
-                     py-4 rounded-xl transition text-sm"
+                     disabled:cursor-not-allowed text-white
+                     font-semibold py-4 rounded-xl transition text-sm"
         >
           Upload Movie
         </button>

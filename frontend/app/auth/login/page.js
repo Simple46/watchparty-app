@@ -48,7 +48,7 @@ export default function LoginPage() {
       >
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white">🎬 WatchParty</h1>
+          <h1 className="text-3xl font-bold text-white"> WatchParty</h1>
           <p className="text-gray-400 mt-2 text-sm">
             Sign in to continue watching
           </p>
@@ -133,7 +133,7 @@ export default function LoginPage() {
         </p>
 
         {/* Admin test credentials — remove this in production */}
-        <div
+        {/* <div
           className="mt-6 p-4 bg-gray-800/60 rounded-lg border 
                         border-gray-700"
         >
@@ -144,7 +144,7 @@ export default function LoginPage() {
             admin@watchparty.com
           </p>
           <p className="text-xs text-gray-400 text-center">admin123</p>
-        </div>
+        </div> */}
       </div>
     </div>
   );
