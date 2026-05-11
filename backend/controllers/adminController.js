@@ -17,15 +17,25 @@ cloudinary.config({
 const getCloudinarySignature = (req, res) => {
   try {
     const timestamp = Math.round(new Date().getTime() / 1000);
-    const folder = "watchparty/movies";
+
+    // Check if this is for an image (thumbnail) or video
+    const type = req.query.type || "video";
+    const folder =
+      type === "image" ? "watchparty/thumbnails" : "watchparty/movies";
+
+    // Build params based on type
+    const params =
+      type === "image"
+        ? { timestamp, folder }
+        : {
+            timestamp,
+            folder,
+            eager: "c_limit,w_1280,h_720/q_auto/f_mp4",
+            eager_async: "true",
+          };
 
     const signature = cloudinary.utils.api_sign_request(
-      {
-        timestamp,
-        folder,
-        eager: "c_limit,w_1280,h_720/q_auto/f_mp4",
-        eager_async: "true",
-      },
+      params,
       process.env.CLOUDINARY_API_SECRET,
     );
 
@@ -266,7 +276,7 @@ const getMovieById = async (req, res) => {
 // ─────────────────────────────────────────
 const updateMovie = async (req, res) => {
   try {
-    const { title, description } = req.body;
+    const { title, description, thumbnail } = req.body;
 
     const existingMovie = await safeQuery((db) =>
       db.movie.findUnique({ where: { id: req.params.id } }),
@@ -285,6 +295,8 @@ const updateMovie = async (req, res) => {
             description !== undefined
               ? description.trim()
               : existingMovie.description,
+          // Only update thumbnail if a new one was provided
+          ...(thumbnail && { thumbnail }),
         },
       }),
     );

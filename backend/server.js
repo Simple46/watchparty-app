@@ -5,11 +5,13 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cookieParser = require("cookie-parser");
 const { db, safeQuery } = require("./utils/db");
+const { socketHandler } = require("./socket/socketHandler");
 
 // Import routes
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const movieRoutes = require("./routes/movieRoutes");
+const roomRoutes = require("./routes/roomRoutes");
 
 dotenv.config();
 
@@ -33,6 +35,8 @@ const io = new Server(server, {
     credentials: true,
   },
 });
+
+socketHandler(io);
 
 // ─── CORS ───
 app.use(
@@ -101,6 +105,7 @@ app.get("/test-db", async (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/movies", movieRoutes);
+app.use("/api/rooms", roomRoutes);
 
 // ─── GLOBAL ERROR HANDLER ───
 // Catches any unhandled errors in routes

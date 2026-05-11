@@ -17,6 +17,7 @@ function HomeContent() {
   const [filteredMovies, setFilteredMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
 
   // Fetch all movies on load
   useEffect(() => {
@@ -38,19 +39,41 @@ function HomeContent() {
 
   // Filter movies when search query changes
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredMovies(movies);
-      return;
+    let result = [...movies];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (movie) =>
+          movie.title.toLowerCase().includes(query) ||
+          movie.description?.toLowerCase().includes(query),
+      );
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = movies.filter(
-      (movie) =>
-        movie.title.toLowerCase().includes(query) ||
-        movie.description?.toLowerCase().includes(query),
-    );
-    setFilteredMovies(filtered);
-  }, [searchQuery, movies]);
+    // Sort
+    switch (sortBy) {
+      case "newest":
+        result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        break;
+      case "oldest":
+        result.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        break;
+      case "az":
+        result.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "za":
+        result.sort((a, b) => b.title.localeCompare(a.title));
+        break;
+      case "watching":
+        result.sort((a, b) => (b._count?.rooms || 0) - (a._count?.rooms || 0));
+        break;
+      default:
+        break;
+    }
+
+    setFilteredMovies(result);
+  }, [searchQuery, movies, sortBy]);
 
   // Count movies with active rooms
   const activeCount = movies.filter((m) => (m._count?.rooms || 0) > 0).length;
@@ -160,6 +183,39 @@ function HomeContent() {
           >
             Try Again
           </button>
+        </div>
+      )}
+
+      {/* Sort controls */}
+      {!searchQuery && (
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-white text-lg font-semibold">All Movies</h2>
+
+          <div className="flex items-center gap-3">
+            <p className="text-gray-500 text-sm hidden sm:block">Sort by:</p>
+            <div className="flex items-center gap-2">
+              {[
+                { value: "newest", label: "Newest" },
+                { value: "az", label: "A–Z" },
+                { value: "watching", label: "Popular" },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setSortBy(option.value)}
+                  className={`
+              text-xs px-3 py-1.5 rounded-lg transition
+              ${
+                sortBy === option.value
+                  ? "bg-red-600 text-white"
+                  : "bg-gray-900 text-gray-400 hover:text-white border border-gray-800"
+              }
+            `}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

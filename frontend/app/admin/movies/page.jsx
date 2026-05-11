@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Film,
@@ -11,6 +11,11 @@ import {
   X,
   RefreshCw,
   Search,
+  Image,
+  ArrowUpAZ,
+  ArrowDownAZ,
+  Clock,
+  HardDrive,
 } from "lucide-react";
 import DeleteModal from "../../../components/admin/DeleteModal";
 import StorageBar from "../../../components/admin/StorageBar";
@@ -24,7 +29,11 @@ export default function MoviesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [stats, setStats] = useState(null);
 
-  // Delete modal state
+  // Sorting state
+  const [sortBy, setSortBy] = useState("newest");
+  // Options: newest, oldest, az, za, largest, smallest
+
+  // Delete modal
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
     movieId: null,
@@ -32,25 +41,29 @@ export default function MoviesPage() {
   });
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Inline edit state
-  // When admin clicks Edit on a movie, that movie goes into edit mode
+  // Edit state
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ title: "", description: "" });
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+  });
   const [editLoading, setEditLoading] = useState(false);
 
-  // Fetch movies and dashboard stats together
+  // Thumbnail edit state
+  const [newThumbnailFile, setNewThumbnailFile] = useState(null);
+  const [newThumbnailPreview, setNewThumbnailPreview] = useState(null);
+  const [thumbnailUploading, setThumbnailUploading] = useState(false);
+  const thumbnailInputRef = useRef(null);
+
   const fetchData = async () => {
     try {
       setLoading(true);
       setError("");
-
       const [moviesRes, statsRes] = await Promise.all([
         api.get("/api/admin/movies"),
         api.get("/api/admin/dashboard"),
       ]);
-
       setMovies(moviesRes.data.movies);
-      setFilteredMovies(moviesRes.data.movies);
       setStats(statsRes.data);
     } catch (err) {
       setError("Failed to load movies. Please try again.");
@@ -63,31 +76,47 @@ export default function MoviesPage() {
     fetchData();
   }, []);
 
-  // Filter movies based on search query
+  // Filter and sort movies
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredMovies(movies);
-      return;
+    let result = [...movies];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (movie) =>
+          movie.title.toLowerCase().includes(query) ||
+          movie.description?.toLowerCase().includes(query),
+      );
     }
-    const query = searchQuery.toLowerCase();
-    const filtered = movies.filter(
-      (movie) =>
-        movie.title.toLowerCase().includes(query) ||
-        movie.description?.toLowerCase().includes(query),
-    );
-    setFilteredMovies(filtered);
-  }, [searchQuery, movies]);
 
-  // ─── FORMAT DURATION ───
-  const formatDuration = (seconds) => {
-    if (!seconds) return "Unknown";
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
-  };
+    // Apply sort
+    switch (sortBy) {
+      case "newest":
+        result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        break;
+      case "oldest":
+        result.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        break;
+      case "az":
+        result.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "za":
+        result.sort((a, b) => b.title.localeCompare(a.title));
+        break;
+      case "largest":
+        result.sort((a, b) => (b.size || 0) - (a.size || 0));
+        break;
+      case "smallest":
+        result.sort((a, b) => (a.size || 0) - (b.size || 0));
+        break;
+      default:
+        break;
+    }
 
-  // ─── FORMAT DATE ───
+    setFilteredMovies(result);
+  }, [searchQuery, movies, sortBy]);
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       day: "numeric",
@@ -96,7 +125,6 @@ export default function MoviesPage() {
     });
   };
 
-  // ─── OPEN DELETE MODAL ───
   const openDeleteModal = (movie) => {
     setDeleteModal({
       isOpen: true,
@@ -105,15 +133,16 @@ export default function MoviesPage() {
     });
   };
 
-  // ─── CONFIRM DELETE ───
   const handleDelete = async () => {
     setDeleteLoading(true);
     try {
       await api.delete(`/api/admin/movies/${deleteModal.movieId}`);
-
-      // Remove from local state — no need to refetch from server
       setMovies((prev) => prev.filter((m) => m.id !== deleteModal.movieId));
-      setDeleteModal({ isOpen: false, movieId: null, movieTitle: "" });
+      setDeleteModal({
+        isOpen: false,
+        movieId: null,
+        movieTitle: "",
+      });
     } catch (err) {
       alert(err.response?.data?.message || "Failed to delete. Try again.");
     } finally {
@@ -121,45 +150,148 @@ export default function MoviesPage() {
     }
   };
 
-  // ─── START EDITING A MOVIE ───
   const startEdit = (movie) => {
     setEditingId(movie.id);
     setEditForm({
       title: movie.title,
       description: movie.description || "",
     });
+    setNewThumbnailFile(null);
+    setNewThumbnailPreview(null);
   };
 
-  // ─── CANCEL EDITING ───
   const cancelEdit = () => {
     setEditingId(null);
     setEditForm({ title: "", description: "" });
+    setNewThumbnailFile(null);
+    setNewThumbnailPreview(null);
+    if (thumbnailInputRef.current) thumbnailInputRef.current.value = "";
   };
 
-  // ─── SAVE EDIT ───
+  // Handle new thumbnail selection during edit
+  const handleNewThumbnailSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setNewThumbnailFile(file);
+    setNewThumbnailPreview(URL.createObjectURL(file));
+  };
+
+  // Upload new thumbnail to Cloudinary
+  const uploadNewThumbnail = async () => {
+    if (!newThumbnailFile) return null;
+
+    setThumbnailUploading(true);
+    try {
+      // Get signature for image upload
+      const sigResponse = await api.get(
+        "/api/admin/cloudinary-signature?type=image",
+      );
+      const { signature, timestamp, folder, cloudName, apiKey } =
+        sigResponse.data;
+
+      const formData = new FormData();
+      formData.append("file", newThumbnailFile);
+      formData.append("signature", signature);
+      formData.append("timestamp", timestamp);
+      formData.append("folder", folder);
+      formData.append("api_key", apiKey);
+
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        { method: "POST", body: formData },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error?.message || "Thumbnail upload failed");
+      }
+
+      return result.secure_url;
+    } finally {
+      setThumbnailUploading(false);
+    }
+  };
+
   const saveEdit = async (movieId) => {
     if (!editForm.title.trim()) return;
 
     setEditLoading(true);
     try {
-      const response = await api.put(`/api/admin/movies/${movieId}`, {
+      // Upload new thumbnail first if one was selected
+      let thumbnailUrl = undefined;
+      if (newThumbnailFile) {
+        thumbnailUrl = await uploadNewThumbnail();
+      }
+
+      // Build update payload
+      const updateData = {
         title: editForm.title.trim(),
         description: editForm.description.trim(),
-      });
+      };
 
-      // Update the movie in local state
+      // Only include thumbnail if a new one was uploaded
+      if (thumbnailUrl !== undefined) {
+        updateData.thumbnail = thumbnailUrl;
+      }
+
+      const response = await api.put(
+        `/api/admin/movies/${movieId}`,
+        updateData,
+      );
+
       setMovies((prev) =>
         prev.map((m) => (m.id === movieId ? response.data.movie : m)),
       );
+
       setEditingId(null);
+      setNewThumbnailFile(null);
+      setNewThumbnailPreview(null);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to update. Try again.");
+      alert(
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to update. Try again.",
+      );
     } finally {
       setEditLoading(false);
     }
   };
 
-  // ─── LOADING STATE ───
+  // Sort button config
+  const sortOptions = [
+    {
+      value: "newest",
+      label: "Newest",
+      icon: Clock,
+    },
+    {
+      value: "oldest",
+      label: "Oldest",
+      icon: Clock,
+    },
+    {
+      value: "az",
+      label: "A → Z",
+      icon: ArrowUpAZ,
+    },
+    {
+      value: "za",
+      label: "Z → A",
+      icon: ArrowDownAZ,
+    },
+    {
+      value: "largest",
+      label: "Largest",
+      icon: HardDrive,
+    },
+    {
+      value: "smallest",
+      label: "Smallest",
+      icon: HardDrive,
+    },
+  ];
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -172,7 +304,6 @@ export default function MoviesPage() {
     );
   }
 
-  // ─── ERROR STATE ───
   if (error) {
     return (
       <div
@@ -195,20 +326,21 @@ export default function MoviesPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Page Header */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-white text-2xl font-bold">Movies</h1>
           <p className="text-gray-400 text-sm mt-1">
-            {movies.length} movie{movies.length !== 1 ? "s" : ""} in your
-            library
+            {movies.length} movie
+            {movies.length !== 1 ? "s" : ""} in your library
           </p>
         </div>
         <Link href="/admin/upload">
           <button
             className="flex items-center gap-2 bg-red-600
-                       hover:bg-red-700 text-white text-sm font-medium
-                       px-4 py-2.5 rounded-lg transition"
+                             hover:bg-red-700 text-white text-sm
+                             font-medium px-4 py-2.5 rounded-lg
+                             transition"
           >
             <Upload className="w-4 h-4" />
             Upload Movie
@@ -225,23 +357,74 @@ export default function MoviesPage() {
         />
       )}
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search
-          className="absolute left-4 top-1/2 -translate-y-1/2
-                     w-4 h-4 text-gray-500"
-        />
-        <input
-          type="text"
-          placeholder="Search movies..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-gray-900 text-white placeholder-gray-500
-                     border border-gray-700 rounded-xl pl-11 pr-4 py-3
-                     text-sm focus:outline-none focus:border-red-500
-                     focus:ring-1 focus:ring-red-500 transition"
-        />
+      {/* Search + Sort Bar */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        {/* Search */}
+        <div className="relative flex-1">
+          <Search
+            className="absolute left-4 top-1/2
+                             -translate-y-1/2 w-4 h-4
+                             text-gray-500"
+          />
+          <input
+            type="text"
+            placeholder="Search movies..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-gray-900 text-white
+                       placeholder-gray-500 border border-gray-700
+                       rounded-xl pl-11 pr-4 py-3 text-sm
+                       focus:outline-none focus:border-red-500
+                       transition"
+          />
+        </div>
+
+        {/* Sort dropdown */}
+        <div className="relative">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="appearance-none bg-gray-900 text-white
+                       border border-gray-700 rounded-xl px-4
+                       py-3 text-sm focus:outline-none
+                       focus:border-red-500 transition
+                       cursor-pointer pr-10 min-w-36"
+          >
+            {sortOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <div
+            className="absolute right-3 top-1/2 -translate-y-1/2
+                          pointer-events-none"
+          >
+            <svg
+              className="w-4 h-4 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </div>
+        </div>
       </div>
+
+      {/* Results count when filtering */}
+      {(searchQuery || sortBy !== "newest") && (
+        <p className="text-gray-500 text-xs">
+          Showing {filteredMovies.length} of {movies.length} movies
+          {searchQuery && ` matching "${searchQuery}"`} · Sorted by{" "}
+          {sortOptions.find((o) => o.value === sortBy)?.label}
+        </p>
+      )}
 
       {/* Empty State */}
       {filteredMovies.length === 0 && (
@@ -268,9 +451,10 @@ export default function MoviesPage() {
           {!searchQuery && (
             <Link href="/admin/upload">
               <button
-                className="flex items-center gap-2 bg-red-600
-                           hover:bg-red-700 text-white text-sm px-4
-                           py-2.5 rounded-lg transition"
+                className="flex items-center gap-2
+                                 bg-red-600 hover:bg-red-700
+                                 text-white text-sm px-4 py-2.5
+                                 rounded-lg transition"
               >
                 <Upload className="w-4 h-4" />
                 Upload First Movie
@@ -292,52 +476,177 @@ export default function MoviesPage() {
             >
               {editingId === movie.id ? (
                 // ─── EDIT MODE ───
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={editForm.title}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, title: e.target.value })
-                    }
-                    className="w-full bg-gray-800 text-white border
-                               border-gray-600 rounded-lg px-3 py-2 text-sm
-                               focus:outline-none focus:border-red-500"
-                    placeholder="Movie title"
-                    autoFocus
-                  />
-                  <textarea
-                    value={editForm.description}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        description: e.target.value,
-                      })
-                    }
-                    className="w-full bg-gray-800 text-white border
-                               border-gray-600 rounded-lg px-3 py-2 text-sm
-                               focus:outline-none focus:border-red-500
-                               resize-none"
-                    placeholder="Description (optional)"
-                    rows={2}
-                  />
-                  <div className="flex gap-2">
+                <div className="space-y-4">
+                  {/* Title input */}
+                  <div>
+                    <label
+                      className="text-gray-400 text-xs
+                                      mb-1 block"
+                    >
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.title}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          title: e.target.value,
+                        })
+                      }
+                      className="w-full bg-gray-800 text-white
+                                 border border-gray-600 rounded-lg
+                                 px-3 py-2 text-sm focus:outline-none
+                                 focus:border-red-500"
+                      placeholder="Movie title"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Description input */}
+                  <div>
+                    <label
+                      className="text-gray-400 text-xs
+                                      mb-1 block"
+                    >
+                      Description
+                    </label>
+                    <textarea
+                      value={editForm.description}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          description: e.target.value,
+                        })
+                      }
+                      className="w-full bg-gray-800 text-white
+                                 border border-gray-600 rounded-lg
+                                 px-3 py-2 text-sm focus:outline-none
+                                 focus:border-red-500 resize-none"
+                      placeholder="Description (optional)"
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* Thumbnail edit */}
+                  <div>
+                    <label
+                      className="text-gray-400 text-xs
+                                      mb-2 block"
+                    >
+                      Cover Image
+                    </label>
+
+                    <input
+                      ref={thumbnailInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleNewThumbnailSelect}
+                      className="hidden"
+                    />
+
+                    <div className="flex items-center gap-4">
+                      {/* Current thumbnail preview */}
+                      <div
+                        className="w-24 h-14 bg-gray-800
+                                      rounded-lg overflow-hidden
+                                      border border-gray-700
+                                      flex-shrink-0"
+                      >
+                        {newThumbnailPreview ? (
+                          // Show newly selected thumbnail
+                          <img
+                            src={newThumbnailPreview}
+                            alt="New thumbnail"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : movie.thumbnail ? (
+                          // Show existing thumbnail
+                          <img
+                            src={movie.thumbnail}
+                            alt={movie.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div
+                            className="w-full h-full flex
+                                          items-center justify-center"
+                          >
+                            <Film className="w-6 h-6 text-gray-600" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        {/* Change thumbnail button */}
+                        <button
+                          type="button"
+                          onClick={() => thumbnailInputRef.current?.click()}
+                          className="flex items-center gap-2
+                                     bg-gray-700 hover:bg-gray-600
+                                     text-white text-xs px-3 py-2
+                                     rounded-lg transition"
+                        >
+                          <Image className="w-3.5 h-3.5" />
+                          {newThumbnailFile ? "Change Image" : "Update Cover"}
+                        </button>
+
+                        {/* Remove new selection */}
+                        {newThumbnailFile && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewThumbnailFile(null);
+                              setNewThumbnailPreview(null);
+                              if (thumbnailInputRef.current)
+                                thumbnailInputRef.current.value = "";
+                            }}
+                            className="text-gray-500
+                                       hover:text-red-400 text-xs
+                                       transition text-left"
+                          >
+                            Cancel new image
+                          </button>
+                        )}
+
+                        {newThumbnailFile && (
+                          <p className="text-green-400 text-xs">
+                            ✓ New image selected
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Save/Cancel buttons */}
+                  <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => saveEdit(movie.id)}
-                      disabled={editLoading || !editForm.title.trim()}
-                      className="flex items-center gap-1.5 bg-green-600
-                                 hover:bg-green-700 disabled:opacity-50
-                                 text-white text-xs px-3 py-2 rounded-lg
+                      disabled={
+                        editLoading ||
+                        thumbnailUploading ||
+                        !editForm.title.trim()
+                      }
+                      className="flex items-center gap-1.5
+                                 bg-green-600 hover:bg-green-700
+                                 disabled:opacity-50 text-white
+                                 text-xs px-4 py-2 rounded-lg
                                  transition"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      {editLoading ? "Saving..." : "Save Changes"}
+                      {thumbnailUploading
+                        ? "Uploading image..."
+                        : editLoading
+                          ? "Saving..."
+                          : "Save Changes"}
                     </button>
                     <button
                       onClick={cancelEdit}
-                      disabled={editLoading}
-                      className="flex items-center gap-1.5 bg-gray-700
-                                 hover:bg-gray-600 text-white text-xs
-                                 px-3 py-2 rounded-lg transition"
+                      disabled={editLoading || thumbnailUploading}
+                      className="flex items-center gap-1.5
+                                 bg-gray-700 hover:bg-gray-600
+                                 text-white text-xs px-4 py-2
+                                 rounded-lg transition"
                     >
                       <X className="w-3.5 h-3.5" />
                       Cancel
@@ -350,7 +659,8 @@ export default function MoviesPage() {
                   {/* Thumbnail */}
                   <div
                     className="w-20 h-12 bg-gray-800 rounded-lg
-                                  flex-shrink-0 overflow-hidden"
+                                  flex-shrink-0 overflow-hidden
+                                  border border-gray-700"
                   >
                     {movie.thumbnail ? (
                       <img
@@ -360,8 +670,8 @@ export default function MoviesPage() {
                       />
                     ) : (
                       <div
-                        className="w-full h-full flex items-center
-                                      justify-center"
+                        className="w-full h-full flex
+                                      items-center justify-center"
                       >
                         <Film className="w-5 h-5 text-gray-600" />
                       </div>
@@ -370,10 +680,16 @@ export default function MoviesPage() {
 
                   {/* Movie Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate">
+                    <p
+                      className="text-white font-medium text-sm
+                                  truncate"
+                    >
                       {movie.title}
                     </p>
-                    <div className="flex items-center gap-3 mt-1">
+                    <div
+                      className="flex items-center gap-3 mt-1
+                                    flex-wrap"
+                    >
                       <span className="text-gray-500 text-xs">
                         {formatDate(movie.createdAt)}
                       </span>
@@ -385,20 +701,12 @@ export default function MoviesPage() {
                           </span>
                         </>
                       )}
-                      {movie.duration && (
-                        <>
-                          <span className="text-gray-700">·</span>
-                          <span className="text-gray-500 text-xs">
-                            {formatDuration(movie.duration)}
-                          </span>
-                        </>
-                      )}
                       {movie._count?.rooms > 0 && (
                         <>
                           <span className="text-gray-700">·</span>
                           <span
                             className="text-green-400 text-xs
-                                         font-medium"
+                                           font-medium"
                           >
                             {movie._count.rooms} active room
                             {movie._count.rooms !== 1 ? "s" : ""}
@@ -409,23 +717,28 @@ export default function MoviesPage() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div
+                    className="flex items-center gap-2
+                                  flex-shrink-0"
+                  >
                     <button
                       onClick={() => startEdit(movie)}
-                      className="flex items-center gap-1.5 text-gray-400
-                                 hover:text-white bg-gray-800
-                                 hover:bg-gray-700 text-xs px-3 py-2
-                                 rounded-lg transition"
+                      className="flex items-center gap-1.5
+                                 text-gray-400 hover:text-white
+                                 bg-gray-800 hover:bg-gray-700
+                                 text-xs px-3 py-2 rounded-lg
+                                 transition"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                       Edit
                     </button>
                     <button
                       onClick={() => openDeleteModal(movie)}
-                      className="flex items-center gap-1.5 text-gray-400
-                                 hover:text-red-400 bg-gray-800
-                                 hover:bg-red-600/10 text-xs px-3 py-2
-                                 rounded-lg transition"
+                      className="flex items-center gap-1.5
+                                 text-gray-400 hover:text-red-400
+                                 bg-gray-800 hover:bg-red-600/10
+                                 text-xs px-3 py-2 rounded-lg
+                                 transition"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       Delete
@@ -438,13 +751,17 @@ export default function MoviesPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       <DeleteModal
         isOpen={deleteModal.isOpen}
         movieTitle={deleteModal.movieTitle}
         onConfirm={handleDelete}
         onCancel={() =>
-          setDeleteModal({ isOpen: false, movieId: null, movieTitle: "" })
+          setDeleteModal({
+            isOpen: false,
+            movieId: null,
+            movieTitle: "",
+          })
         }
         loading={deleteLoading}
       />
