@@ -189,8 +189,6 @@ function HomeContent() {
       {/* Sort controls */}
       {!searchQuery && (
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-white text-lg font-semibold">All Movies</h2>
-
           <div className="flex items-center gap-3">
             <p className="text-gray-500 text-sm hidden sm:block">Sort by:</p>
             <div className="flex items-center gap-2">

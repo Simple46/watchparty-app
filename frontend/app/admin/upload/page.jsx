@@ -58,7 +58,9 @@ export default function UploadMoviePage() {
     return `${mb.toFixed(1)} MB`;
   };
 
-  // ─── Upload file directly to Cloudinary ───
+  // ─── Upload file directly to Cloudinary ──
+  // Simple version — no transformation params during upload
+  // Transformations are applied via URL after upload
   const uploadToCloudinaryDirect = (
     file,
     signature,
@@ -71,20 +73,16 @@ export default function UploadMoviePage() {
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("signature", signature);
-      formData.append("timestamp", timestamp);
-      formData.append("folder", folder);
       formData.append("api_key", apiKey);
-
-      // Only add video-specific params for videos
-      if (resourceType === "video") {
-        formData.append("eager", "c_limit,w_1280,h_720/q_auto/f_mp4");
-        formData.append("eager_async", "true");
-      }
+      formData.append("timestamp", timestamp);
+      formData.append("signature", signature);
+      formData.append("folder", folder);
+      // NO eager, NO transformation params here
+      // They must match EXACTLY what was signed
+      // We signed only folder + timestamp so we only send those
 
       const xhr = new XMLHttpRequest();
 
-      // Track upload progress
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
           const percent = Math.round((event.loaded / event.total) * 100);
@@ -97,17 +95,24 @@ export default function UploadMoviePage() {
           } else if (percent < 100) {
             setProgressMessage(`Almost done... ${percent}%`);
           } else {
-            setProgressMessage("Processing on Cloudinary...");
+            setProgressMessage("Processing on Cloudinary servers...");
           }
         }
       });
 
       xhr.addEventListener("load", () => {
         if (xhr.status === 200) {
-          resolve(JSON.parse(xhr.responseText));
+          const response = JSON.parse(xhr.responseText);
+          console.log("Cloudinary upload response:", response);
+          resolve(response);
         } else {
-          const error = JSON.parse(xhr.responseText);
-          reject(new Error(error.error?.message || "Upload failed"));
+          try {
+            const error = JSON.parse(xhr.responseText);
+            console.error("Cloudinary upload error response:", error);
+            reject(new Error(error.error?.message || "Upload failed"));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
         }
       });
 
@@ -115,7 +120,6 @@ export default function UploadMoviePage() {
         reject(new Error("Network error during upload"));
       });
 
-      // Use the correct endpoint based on resource type
       xhr.open(
         "POST",
         `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
@@ -142,11 +146,12 @@ export default function UploadMoviePage() {
     setUploadProgress(0);
 
     try {
-      // Step 1 — Get video upload signature
+      // Step 1 — Get signature for video
       setProgressMessage("Preparing secure upload...");
       const videoSigResponse = await api.get(
         "/api/admin/cloudinary-signature?type=video",
       );
+
       const {
         signature: videoSig,
         timestamp: videoTs,
@@ -155,7 +160,7 @@ export default function UploadMoviePage() {
         apiKey,
       } = videoSigResponse.data;
 
-      // Step 2 — Upload video directly to Cloudinary
+      // Step 2 — Upload video
       setProgressMessage("Uploading video to Cloudinary...");
       const videoResult = await uploadToCloudinaryDirect(
         videoFile,
@@ -167,18 +172,28 @@ export default function UploadMoviePage() {
         "video",
       );
 
+      console.log("Video upload result:", videoResult);
+
+      // The public_id is the key piece we need
+      // Everything else we reconstruct ourselves
+      const publicId = videoResult.public_id;
+
+      if (!publicId) {
+        throw new Error("Upload succeeded but no public_id returned");
+      }
+
       setUploadProgress(100);
-      setProgressMessage("Video uploaded successfully!");
+      setProgressMessage("Video uploaded!");
 
       // Step 3 — Upload thumbnail if provided
       let thumbnailUrl = null;
       if (thumbnailFile) {
         setProgressMessage("Uploading cover image...");
 
-        // Get a SEPARATE signature specifically for images
         const thumbSigResponse = await api.get(
           "/api/admin/cloudinary-signature?type=image",
         );
+
         const {
           signature: thumbSig,
           timestamp: thumbTs,
@@ -192,26 +207,32 @@ export default function UploadMoviePage() {
           thumbFolder,
           cloudName,
           apiKey,
-          "image", // ← image not video
+          "image",
         );
 
         thumbnailUrl = thumbnailResult.secure_url;
-        console.log("✅ Thumbnail uploaded:", thumbnailUrl);
+        console.log("Thumbnail URL:", thumbnailUrl);
       }
 
       // Step 4 — Save to database
+      // We send public_id NOT the URL
+      // Backend constructs the correct streamable URL
       setProgressMessage("Saving to your library...");
-      await api.post("/api/admin/save-movie", {
+
+      const saveResponse = await api.post("/api/admin/save-movie", {
         title: title.trim(),
         description: description.trim(),
-        videoUrl: videoResult.secure_url,
-        cloudinaryId: videoResult.public_id,
+        // We no longer send videoUrl from frontend
+        // Backend builds it from cloudinaryId
+        cloudinaryId: publicId,
         thumbnail: thumbnailUrl,
         size: parseFloat((videoFile.size / (1024 * 1024)).toFixed(2)),
         duration: videoResult.duration
           ? Math.round(videoResult.duration)
           : null,
       });
+
+      console.log("Save response:", saveResponse.data);
 
       setUploadState("success");
     } catch (err) {

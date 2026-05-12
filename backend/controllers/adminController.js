@@ -17,25 +17,19 @@ cloudinary.config({
 const getCloudinarySignature = (req, res) => {
   try {
     const timestamp = Math.round(new Date().getTime() / 1000);
-
-    // Check if this is for an image (thumbnail) or video
     const type = req.query.type || "video";
     const folder =
       type === "image" ? "watchparty/thumbnails" : "watchparty/movies";
 
-    // Build params based on type
-    const params =
-      type === "image"
-        ? { timestamp, folder }
-        : {
-            timestamp,
-            folder,
-            eager: "c_limit,w_1280,h_720/q_auto/f_mp4",
-            eager_async: "true",
-          };
-
+    // Sign with ONLY folder and timestamp
+    // No transformation params here — we apply those
+    // to the URL after upload, not during upload
+    // This keeps the signature simple and impossible to mismatch
     const signature = cloudinary.utils.api_sign_request(
-      params,
+      {
+        timestamp,
+        folder,
+      },
       process.env.CLOUDINARY_API_SECRET,
     );
 
@@ -53,28 +47,35 @@ const getCloudinarySignature = (req, res) => {
     });
   }
 };
-
 // ─────────────────────────────────────────
 // SAVE MOVIE AFTER DIRECT UPLOAD
 // POST /api/admin/save-movie
 // ─────────────────────────────────────────
 const saveMovie = async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      videoUrl,
-      cloudinaryId,
-      thumbnail,
-      size,
-      duration,
-    } = req.body;
+    const { title, description, cloudinaryId, thumbnail, size, duration } =
+      req.body;
 
-    if (!title || !videoUrl || !cloudinaryId) {
+    if (!title || !cloudinaryId) {
       return res.status(400).json({
-        message: "Title, videoUrl and cloudinaryId are required",
+        message: "Title and cloudinaryId are required",
       });
     }
+
+    // Build the direct streamable video URL from scratch
+    // using the public_id Cloudinary gave us
+    // This is ALWAYS correct regardless of what Cloudinary
+    // returned as secure_url
+    // Format: https://res.cloudinary.com/CLOUD_NAME/video/upload/TRANSFORMATIONS/PUBLIC_ID.mp4
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+
+    // Apply H.264 video codec transformation so all browsers
+    // can display the video visually not just audio
+    const videoUrl = `https://res.cloudinary.com/${cloudName}/video/upload/vc_h264,ac_aac,q_auto/${cloudinaryId}.mp4`;
+
+    console.log(`\n💾 Saving movie: "${title}"`);
+    console.log(`   Cloudinary ID: ${cloudinaryId}`);
+    console.log(`   Video URL: ${videoUrl}`);
 
     const movie = await safeQuery((db) =>
       db.movie.create({
@@ -85,7 +86,7 @@ const saveMovie = async (req, res) => {
           thumbnail: thumbnail || null,
           cloudinaryId,
           size: size || null,
-          duration: duration || null,
+          duration: duration ? Math.round(duration) : null,
         },
       }),
     );
@@ -103,7 +104,6 @@ const saveMovie = async (req, res) => {
     });
   }
 };
-
 // ─────────────────────────────────────────
 // GET DASHBOARD STATS
 // GET /api/admin/dashboard

@@ -221,4 +221,67 @@ router.post("/:roomCode/close", protect, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────
+// LEAVE ROOM
+// POST /api/rooms/:roomCode/leave
+// Marks user as inactive in the room
+// If last member, closes the room entirely
+// ─────────────────────────────────────────
+router.post("/:roomCode/leave", protect, async (req, res) => {
+  try {
+    const room = await safeQuery((db) =>
+      db.room.findUnique({
+        where: {
+          roomCode: req.params.roomCode.toUpperCase(),
+        },
+      }),
+    );
+
+    if (!room) {
+      return res.status(200).json({ message: "Room not found" });
+    }
+
+    // Remove this user from room members
+    await safeQuery((db) =>
+      db.roomMember.deleteMany({
+        where: {
+          roomId: room.id,
+          userId: req.user.userId,
+        },
+      }),
+    ).catch(() => {
+      // Ignore if member record doesn't exist
+    });
+
+    // Count remaining members AFTER deletion
+    const remainingMembers = await safeQuery((db) =>
+      db.roomMember.count({
+        where: { roomId: room.id },
+      }),
+    );
+
+    console.log(
+      `Room ${room.roomCode}: ${remainingMembers} members remaining after ${req.user.userId} left`,
+    );
+
+    // Only close the room if truly nobody is left
+    if (remainingMembers === 0) {
+      await safeQuery((db) =>
+        db.room.update({
+          where: { id: room.id },
+          data: { isActive: false },
+        }),
+      );
+      console.log(`Room ${room.roomCode} closed — no members left`);
+    }
+
+    res.status(200).json({
+      message: "Left room successfully",
+      remainingMembers,
+    });
+  } catch (error) {
+    console.error("Leave room error:", error);
+    res.status(200).json({ message: "Left room" });
+  }
+});
 module.exports = router;

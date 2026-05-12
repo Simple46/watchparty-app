@@ -4,75 +4,35 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { getSocket } from "../lib/socket";
 import { useAuth } from "../context/AuthContext";
 
-// This hook manages everything about a watch party room:
-// - Connecting and joining the room
-// - Tracking who is in the room
-// - Syncing play/pause/seek events
-// - Chat messages
-// - Buffering state
-//
-// The video player component calls the functions from this hook
-// to emit events, and listens to the state changes to update
 export default function useRoom(roomCode, roomData) {
   const { user } = useAuth();
-  const socket = getSocket();
 
-  // ─── ROOM STATE ───
   const [members, setMembers] = useState([]);
   const [hostId, setHostId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [roomJoined, setRoomJoined] = useState(false);
-
-  // ─── CHAT STATE ───
   const [messages, setMessages] = useState([]);
-
-  // ─── PLAYBACK SYNC STATE ───
-  // These are the values your video player reads
   const [syncEvent, setSyncEvent] = useState(null);
-  // syncEvent looks like: { type: "play"|"pause"|"seek", currentTime, serverTimestamp }
-
-  // ─── BUFFERING STATE ───
   const [bufferingUsers, setBufferingUsers] = useState([]);
 
-  // Track if this user is the host
+  const hasJoined = useRef(false);
+  const roomCodeRef = useRef(roomCode);
+  const userRef = useRef(user);
+  const roomDataRef = useRef(roomData);
+
+  // Keep refs up to date
+  useEffect(() => {
+    roomCodeRef.current = roomCode;
+  }, [roomCode]);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+  useEffect(() => {
+    roomDataRef.current = roomData;
+  }, [roomData]);
+
   const isHost = user?.id === hostId;
 
-  // Reference to track if we have already joined
-  // Prevents double-joining on re-renders
-  const hasJoined = useRef(false);
-
-  // ─── JOIN OR CREATE ROOM ───
-  const joinOrCreateRoom = useCallback(() => {
-    if (!socket || !roomData || !user) return;
-
-    const isHost = user.id === roomData.hostId;
-
-    if (isHost) {
-      // Host creates the room in the socket server
-      socket.emit("create_room", {
-        roomCode,
-        movieId: roomData.movie.id,
-        hostId: user.id,
-        user: {
-          id: user.id,
-          name: user.name,
-          avatar: user.avatar || null,
-        },
-      });
-    } else {
-      // Regular user joins an existing room
-      socket.emit("join_room", {
-        roomCode,
-        user: {
-          id: user.id,
-          name: user.name,
-          avatar: user.avatar || null,
-        },
-      });
-    }
-  }, [roomCode, roomData, user, socket]);
-
-  // ─── ADD SYSTEM MESSAGE ───
   const addSystemMessage = useCallback((text) => {
     setMessages((prev) => [
       ...prev,
@@ -80,28 +40,62 @@ export default function useRoom(roomCode, roomData) {
         isSystem: true,
         message: text,
         timestamp: Date.now(),
-        id: Math.random().toString(36).slice(2),
+        id: `sys_${Date.now()}_${Math.random()}`,
       },
     ]);
   }, []);
 
-  // ─── SETUP SOCKET EVENTS ───
+  const joinOrCreateRoom = useCallback(() => {
+    const socket = getSocket();
+    const currentUser = userRef.current;
+    const currentRoomData = roomDataRef.current;
+    const currentRoomCode = roomCodeRef.current;
+
+    if (!socket?.connected || !currentUser || !currentRoomData) {
+      return;
+    }
+
+    const amIHost = currentUser.id === currentRoomData.hostId;
+
+    if (amIHost) {
+      socket.emit("create_room", {
+        roomCode: currentRoomCode,
+        movieId: currentRoomData.movie.id,
+        hostId: currentUser.id,
+        user: {
+          id: currentUser.id,
+          name: currentUser.name,
+          avatar: currentUser.avatar || null,
+        },
+      });
+    } else {
+      socket.emit("join_room", {
+        roomCode: currentRoomCode,
+        user: {
+          id: currentUser.id,
+          name: currentUser.name,
+          avatar: currentUser.avatar || null,
+        },
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (!roomCode || !user || !roomData) return;
-    if (!socket) return;
 
-    // Connect if not already connected
+    const socket = getSocket();
+
     if (!socket.connected) {
       socket.connect();
     }
 
+    // ─── CONNECTION ───
     const onConnect = () => {
       setIsConnected(true);
-
-      // Once connected, join or create the room
       if (!hasJoined.current) {
         hasJoined.current = true;
-        joinOrCreateRoom();
+        // Small delay to ensure socket is fully ready
+        setTimeout(joinOrCreateRoom, 100);
       }
     };
 
@@ -110,198 +104,237 @@ export default function useRoom(roomCode, roomData) {
       hasJoined.current = false;
     };
 
-    // If already connected, join immediately
-    if (socket.connected) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsConnected(true);
-      if (!hasJoined.current) {
-        hasJoined.current = true;
-        joinOrCreateRoom();
-      }
-    }
-
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-
     // ─── ROOM EVENTS ───
-
-    // Room was successfully created (host only)
-    socket.on("room_created", ({ members }) => {
-      setMembers(members);
+    const onRoomCreated = ({ members: m }) => {
+      setMembers(m);
       setHostId(roomData.hostId);
       setRoomJoined(true);
-    });
+      addSystemMessage(
+        "Watch party started! Share the room code with friends.",
+      );
+    };
 
-    // Current room state (received when joining)
-    socket.on("room_state", ({ isPlaying, currentTime, hostId, members }) => {
-      setMembers(members);
-      setHostId(hostId);
+    const onRoomState = ({
+      isPlaying,
+      currentTime,
+      hostId: hId,
+      members: m,
+    }) => {
+      setMembers(m);
+      setHostId(hId);
       setRoomJoined(true);
-
-      // Sync your video to the current room state
       setSyncEvent({
         type: isPlaying ? "play" : "pause",
         currentTime,
         serverTimestamp: Date.now(),
       });
-    });
+    };
 
-    // Someone new joined
-    socket.on("user_joined", ({ user: joinedUser, members }) => {
-      setMembers(members);
-      addSystemMessage(`${joinedUser.name} joined the room`);
-    });
+    const onUserJoined = ({ user: joinedUser, members: m }) => {
+      setMembers(m);
+      if (joinedUser.id !== user.id) {
+        addSystemMessage(`${joinedUser.name} joined the room`);
+      }
+    };
 
-    // Someone left
-    socket.on("user_left", ({ name, members }) => {
-      setMembers(members);
+    const onUserLeft = ({ name, members: m }) => {
+      setMembers(m);
       addSystemMessage(`${name} left the room`);
-    });
+    };
 
-    // Host changed
-    socket.on("host_changed", ({ newHostId, newHostName, members }) => {
+    const onHostChanged = ({ newHostId, newHostName, members: m }) => {
       setHostId(newHostId);
-      setMembers(members);
-      addSystemMessage(`${newHostName} is now the host`);
-    });
+      setMembers(m);
+      if (newHostId === user.id) {
+        addSystemMessage("You are now the host — you control playback");
+      } else {
+        addSystemMessage(`${newHostName} is now the host`);
+      }
+    };
 
-    // Room error
-    socket.on("room_error", ({ message }) => {
-      console.error("Room error:", message);
-    });
+    const onRoomError = ({ message: msg }) => {
+      console.error("Room error:", msg);
+      addSystemMessage(`Error: ${msg}`);
+    };
 
-    // ─── PLAYBACK SYNC EVENTS ───
+    // ─── SYNC EVENTS ───
+    const onPlay = ({ currentTime, serverTimestamp }) => {
+      setSyncEvent({ type: "play", currentTime, serverTimestamp });
+    };
 
-    // Play event from host
-    socket.on("play", ({ currentTime, serverTimestamp }) => {
-      setSyncEvent({
-        type: "play",
-        currentTime,
-        serverTimestamp,
-      });
-    });
-
-    // Pause event from host
-    socket.on("pause", ({ currentTime }) => {
+    const onPause = ({ currentTime }) => {
       setSyncEvent({
         type: "pause",
         currentTime,
         serverTimestamp: Date.now(),
       });
-    });
+    };
 
-    // Seek event from host
-    socket.on("seek", ({ currentTime, serverTimestamp }) => {
+    const onSeek = ({ currentTime, serverTimestamp }) => {
+      setSyncEvent({ type: "seek", currentTime, serverTimestamp });
+    };
+
+    const onSyncResponse = ({ isPlaying, currentTime, serverTimestamp }) => {
       setSyncEvent({
-        type: "seek",
+        type: isPlaying ? "play" : "pause",
         currentTime,
         serverTimestamp,
       });
-    });
+    };
 
-    // Sync response — current timestamp from room
-    socket.on(
-      "sync_response",
-      ({ isPlaying, currentTime, serverTimestamp }) => {
-        setSyncEvent({
-          type: isPlaying ? "play" : "pause",
-          currentTime,
-          serverTimestamp,
-        });
-      },
-    );
-
-    // ─── BUFFERING EVENTS ───
-    socket.on("user_buffering", ({ userId, name }) => {
+    // ─── BUFFERING ───
+    const onUserBuffering = ({ userId, name }) => {
       setBufferingUsers((prev) => {
         if (prev.find((u) => u.userId === userId)) return prev;
         return [...prev, { userId, name }];
       });
-    });
+    };
 
-    socket.on("user_buffering_done", ({ userId }) => {
+    const onUserBufferingDone = ({ userId }) => {
       setBufferingUsers((prev) => prev.filter((u) => u.userId !== userId));
-    });
+    };
+
+    // ─── CHAT ───
+    const onChatMessage = (messageData) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          ...messageData,
+          // isMine is true if this socket sent it
+          isMine: messageData.socketId === socket.id,
+          isSystem: false,
+        },
+      ]);
+    };
+
+    // Register all listeners
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("room_created", onRoomCreated);
+    socket.on("room_state", onRoomState);
+    socket.on("user_joined", onUserJoined);
+    socket.on("user_left", onUserLeft);
+    socket.on("host_changed", onHostChanged);
+    socket.on("room_error", onRoomError);
+    socket.on("play", onPlay);
+    socket.on("pause", onPause);
+    socket.on("seek", onSeek);
+    socket.on("sync_response", onSyncResponse);
+    socket.on("user_buffering", onUserBuffering);
+    socket.on("user_buffering_done", onUserBufferingDone);
+    socket.on("chat_message", onChatMessage);
+
+    // If socket is already connected join immediately
+    if (socket.connected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsConnected(true);
+      if (!hasJoined.current) {
+        hasJoined.current = true;
+        setTimeout(joinOrCreateRoom, 100);
+      }
+    }
+
+    // Find the return cleanup function in useRoom.js
+    // Inside the big useEffect that registers socket listeners
+    // Update the return statement to this:
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
-      socket.off("room_created");
-      socket.off("room_state");
-      socket.off("user_joined");
-      socket.off("user_left");
-      socket.off("host_changed");
-      socket.off("room_error");
-      socket.off("play");
-      socket.off("pause");
-      socket.off("seek");
-      socket.off("sync_response");
-      socket.off("user_buffering");
-      socket.off("user_buffering_done");
-    };
-  }, [roomCode, roomData, user, socket, joinOrCreateRoom, addSystemMessage]);
+      socket.off("room_created", onRoomCreated);
+      socket.off("room_state", onRoomState);
+      socket.off("user_joined", onUserJoined);
+      socket.off("user_left", onUserLeft);
+      socket.off("host_changed", onHostChanged);
+      socket.off("room_error", onRoomError);
+      socket.off("play", onPlay);
+      socket.off("pause", onPause);
+      socket.off("seek", onSeek);
+      socket.off("sync_response", onSyncResponse);
+      socket.off("user_buffering", onUserBuffering);
+      socket.off("user_buffering_done", onUserBufferingDone);
+      socket.off("chat_message", onChatMessage);
 
-  // ─── EMIT PLAY ───
-  // Called by the video player when host presses play
+      // Reset hasJoined on cleanup so Strict Mode second
+      // mount can join properly
+      hasJoined.current = false;
+    };
+  }, [roomCode, user?.id, roomData?.hostId]);
+
+  // ─── ACTIONS ───
+  // All actions use getSocket() to always get the current socket
   const emitPlay = useCallback(
     (currentTime) => {
       if (!isHost) return;
-      socket.emit("play", { roomCode, currentTime });
+      getSocket()?.emit("play", {
+        roomCode: roomCodeRef.current,
+        currentTime,
+      });
     },
-    [isHost, roomCode, socket],
+    [isHost],
   );
 
-  // ─── EMIT PAUSE ───
   const emitPause = useCallback(
     (currentTime) => {
       if (!isHost) return;
-      socket.emit("pause", { roomCode, currentTime });
+      getSocket()?.emit("pause", {
+        roomCode: roomCodeRef.current,
+        currentTime,
+      });
     },
-    [isHost, roomCode, socket],
+    [isHost],
   );
 
-  // ─── EMIT SEEK ───
   const emitSeek = useCallback(
     (currentTime) => {
       if (!isHost) return;
-      socket.emit("seek", { roomCode, currentTime });
+      getSocket()?.emit("seek", {
+        roomCode: roomCodeRef.current,
+        currentTime,
+      });
     },
-    [isHost, roomCode, socket],
+    [isHost],
   );
 
-  // ─── EMIT CHAT MESSAGE ───
-  const emitChatMessage = useCallback(
-    (message) => {
-      if (!message.trim()) return;
-      socket.emit("chat_message", { roomCode, message });
-    },
-    [roomCode, socket],
-  );
+  const emitChatMessage = useCallback((message) => {
+    if (!message?.trim()) return;
+    const socket = getSocket();
+    if (!socket?.connected) {
+      console.warn("Socket not connected — cannot send message");
+      return;
+    }
+    socket.emit("chat_message", {
+      roomCode: roomCodeRef.current,
+      message: message.trim(),
+    });
+  }, []);
 
-  // ─── EMIT BUFFERING ───
   const emitBuffering = useCallback(() => {
-    socket.emit("buffering", { roomCode });
-  }, [roomCode, socket]);
+    getSocket()?.emit("buffering", {
+      roomCode: roomCodeRef.current,
+    });
+  }, []);
 
-  // ─── EMIT BUFFERING DONE ───
   const emitBufferingDone = useCallback(() => {
-    socket.emit("buffering_done", { roomCode });
-  }, [roomCode, socket]);
+    getSocket()?.emit("buffering_done", {
+      roomCode: roomCodeRef.current,
+    });
+  }, []);
 
-  // ─── REQUEST SYNC ───
-  // Called when a new user joins to get the current timestamp
   const requestSync = useCallback(() => {
-    socket.emit("sync_request", { roomCode });
-  }, [roomCode, socket]);
+    getSocket()?.emit("sync_request", {
+      roomCode: roomCodeRef.current,
+    });
+  }, []);
 
-  // ─── LEAVE ROOM ───
   const leaveRoom = useCallback(() => {
-    socket.emit("leave_room", { roomCode });
+    getSocket()?.emit("leave_room", {
+      roomCode: roomCodeRef.current,
+    });
     hasJoined.current = false;
-  }, [roomCode, socket]);
+  }, []);
 
   return {
-    // State
     members,
     hostId,
     isHost,
@@ -310,8 +343,6 @@ export default function useRoom(roomCode, roomData) {
     messages,
     syncEvent,
     bufferingUsers,
-
-    // Actions
     emitPlay,
     emitPause,
     emitSeek,

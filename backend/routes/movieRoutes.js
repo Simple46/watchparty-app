@@ -17,13 +17,35 @@ router.get("/", async (req, res) => {
           createdAt: true,
           _count: {
             select: {
-              rooms: { where: { isActive: true } },
+              // Only count active rooms
+              rooms: true,
             },
           },
         },
       }),
     );
-    res.status(200).json({ movies });
+
+    // Filter the count to only include active rooms
+    // since Prisma _count doesn't support where on
+    // scalar aggregates in all versions
+    const moviesWithActiveRooms = await Promise.all(
+      movies.map(async (movie) => {
+        const activeRoomCount = await safeQuery((db) =>
+          db.room.count({
+            where: {
+              movieId: movie.id,
+              isActive: true,
+            },
+          }),
+        );
+        return {
+          ...movie,
+          _count: { rooms: activeRoomCount },
+        };
+      }),
+    );
+
+    res.status(200).json({ movies: moviesWithActiveRooms });
   } catch (error) {
     console.error("Get movies error:", error);
     res.status(500).json({ message: "Failed to fetch movies" });
@@ -40,9 +62,16 @@ router.get("/:id", async (req, res) => {
             where: { isActive: true },
             include: {
               host: {
-                select: { id: true, name: true, avatar: true },
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true,
+                },
               },
-              _count: { select: { members: true } },
+              // Count actual members in each room
+              _count: {
+                select: { members: true },
+              },
             },
           },
         },
@@ -50,13 +79,17 @@ router.get("/:id", async (req, res) => {
     );
 
     if (!movie) {
-      return res.status(404).json({ message: "Movie not found" });
+      return res.status(404).json({
+        message: "Movie not found",
+      });
     }
 
     res.status(200).json({ movie });
   } catch (error) {
     console.error("Get movie error:", error);
-    res.status(500).json({ message: "Failed to fetch movie" });
+    res.status(500).json({
+      message: "Failed to fetch movie",
+    });
   }
 });
 
