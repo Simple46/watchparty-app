@@ -1,3 +1,5 @@
+/* @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=League+Spartan:wght@100..900&display=swap'); */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -117,14 +119,56 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+
 @layer base {
+  /* Remove the shadcn variable references
+     and use direct Tailwind classes instead */
   * {
-    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+
   html {
-    @apply font-sans;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: rgb(3 7 18); /* gray-950 */
+    color: rgb(255 255 255);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: rgb(17 24 39); /* gray-900 */
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(55 65 81); /* gray-700 */
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(75 85 99); /* gray-600 */
+  }
+
+  /* Remove default button styles */
+  button {
+    cursor: pointer;
+  }
+
+  /* Remove default input outline */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
   }
 }

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -11,10 +12,83 @@ import {
   Crown,
   WifiOff,
   Loader,
+  Subtitles,
 } from "lucide-react";
+
+// ─── SRT TO VTT CONVERTER ───
+const convertSrtToVtt = (srtContent) => {
+  let vtt = "WEBVTT\n\n";
+
+  const lines = srtContent
+    .trim()
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n");
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+
+    if (/^\d+$/.test(line)) {
+      i++;
+      continue;
+    }
+
+    if (line.includes("-->")) {
+      vtt += line.replace(/,/g, ".") + "\n";
+      i++;
+
+      while (i < lines.length && lines[i].trim() !== "") {
+        vtt += lines[i] + "\n";
+        i++;
+      }
+      vtt += "\n";
+    } else {
+      i++;
+    }
+  }
+
+  return vtt;
+};
+
+const createVttObjectUrl = async (subtitleUrl, backendUrl) => {
+  try {
+    console.log("Loading subtitle:", subtitleUrl);
+
+    // Use backend proxy to avoid CORS issues
+    // Replace NEXT_PUBLIC_BACKEND_URL with the actual env variable
+    const proxyUrl = `${backendUrl}/api/movies/subtitle?url=${encodeURIComponent(subtitleUrl)}`;
+
+    const response = await fetch(proxyUrl);
+
+    if (!response.ok) {
+      throw new Error(`Subtitle fetch failed: ${response.status}`);
+    }
+
+    const text = await response.text();
+    console.log("Subtitle preview:", text.substring(0, 150));
+
+    let vttContent;
+
+    if (text.trim().startsWith("WEBVTT")) {
+      vttContent = text;
+    } else {
+      vttContent = convertSrtToVtt(text);
+    }
+
+    console.log("VTT preview:", vttContent.substring(0, 150));
+
+    const blob = new Blob([vttContent], { type: "text/vtt" });
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    console.error("Subtitle load error:", error.message);
+    return null;
+  }
+};
 
 export default function VideoPlayer({
   videoUrl,
+  subtitleUrl,
   isHost,
   syncEvent,
   onPlay,
@@ -28,6 +102,7 @@ export default function VideoPlayer({
   const containerRef = useRef(null);
   const isSyncing = useRef(false);
   const controlsTimer = useRef(null);
+  const currentVideoUrl = useRef(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -38,29 +113,88 @@ export default function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [videoError, setVideoError] = useState(null);
+  const [vttUrl, setVttUrl] = useState(null);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
 
   // ─── LOAD VIDEO ───
-  // Direct MP4 from Cloudinary — no HLS.js needed
-  // Just set the src directly on the video element
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !videoUrl) return;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Only reload if URL actually changed
+    if (currentVideoUrl.current === videoUrl) return;
+    currentVideoUrl.current = videoUrl;
+
     setIsLoading(true);
     setVideoError(null);
     setIsPlaying(false);
     setCurrentTime(0);
+    setDuration(0);
 
-    // Set source directly — browser handles MP4 natively
     video.src = videoUrl;
     video.load();
+  }, [videoUrl]);
+
+  // ─── LOAD AND CONVERT SUBTITLE ───
+  useEffect(() => {
+    if (!subtitleUrl) {
+      setVttUrl(null);
+      return;
+    }
+
+    let objectUrl = null;
+
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+    createVttObjectUrl(subtitleUrl, backendUrl).then((url) => {
+      if (url) {
+        objectUrl = url;
+        setVttUrl(url);
+      }
+    });
 
     return () => {
-      video.pause();
-      video.src = "";
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [videoUrl]);
+  }, [subtitleUrl]);
+
+  // ─── ACTIVATE SUBTITLE TRACK ───
+  // This runs whenever vttUrl changes or video loads
+  // The default attribute on <track> is unreliable
+  // We must set mode programmatically
+  useEffect(() => {
+    if (!vttUrl || !videoRef.current) return;
+
+    const video = videoRef.current;
+
+    const activateTrack = () => {
+      // Small delay gives browser time to register the track
+      setTimeout(() => {
+        const tracks = video.textTracks;
+        console.log(`Found ${tracks.length} text track(s)`);
+
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].mode = "showing";
+          console.log(`Track ${i} mode set to showing:`, tracks[i].label);
+        }
+
+        setSubtitlesEnabled(true);
+      }, 500);
+    };
+
+    // Try immediately
+    activateTrack();
+
+    // Also try when video metadata loads in case
+    // tracks are not ready yet
+    video.addEventListener("loadedmetadata", activateTrack);
+    video.addEventListener("loadeddata", activateTrack);
+
+    return () => {
+      video.removeEventListener("loadedmetadata", activateTrack);
+      video.removeEventListener("loadeddata", activateTrack);
+    };
+  }, [vttUrl]);
 
   // ─── VIDEO EVENT LISTENERS ───
   useEffect(() => {
@@ -72,9 +206,7 @@ export default function VideoPlayer({
       setIsLoading(false);
     };
 
-    const onLoadedData = () => {
-      setIsLoading(false);
-    };
+    const onLoadedData = () => setIsLoading(false);
 
     const onCanPlay = () => {
       setIsLoading(false);
@@ -96,36 +228,27 @@ export default function VideoPlayer({
       onBufferingDone?.();
     };
 
-    const onPauseEvent = () => {
-      setIsPlaying(false);
-    };
-
-    const onEnded = () => {
-      setIsPlaying(false);
-    };
+    const onPauseEvent = () => setIsPlaying(false);
+    const onEnded = () => setIsPlaying(false);
 
     const onError = () => {
       const err = video.error;
       let message = "Failed to load video";
       if (err) {
         switch (err.code) {
-          case 1:
-            message = "Video loading was aborted";
-            break;
           case 2:
             message = "Network error while loading video";
             break;
           case 3:
-            message = "Video decoding failed — format may not be supported";
+            message = "Video decoding failed";
             break;
           case 4:
-            message = "Video format not supported by your browser";
+            message = "Video format not supported";
             break;
         }
       }
       setVideoError(message);
       setIsLoading(false);
-      console.error("Video error:", err);
     };
 
     video.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -151,7 +274,7 @@ export default function VideoPlayer({
     };
   }, [onBuffering, onBufferingDone]);
 
-  // ─── HANDLE SYNC EVENTS FROM SOCKET ───
+  // ─── SYNC EVENTS FROM SOCKET ───
   useEffect(() => {
     if (!syncEvent || !videoRef.current) return;
     const video = videoRef.current;
@@ -182,7 +305,7 @@ export default function VideoPlayer({
     }, 500);
   }, [syncEvent]);
 
-  // ─── HOST PLAY/PAUSE ───
+  // ─── HOST CONTROLS ───
   const handlePlayPause = useCallback(() => {
     if (!isHost || !videoRef.current) return;
     const video = videoRef.current;
@@ -200,7 +323,6 @@ export default function VideoPlayer({
     }
   }, [isHost, onPlay, onPause]);
 
-  // ─── HOST SEEK ───
   const handleProgressClick = useCallback(
     (e) => {
       if (!isHost || !videoRef.current || !duration) return;
@@ -212,6 +334,7 @@ export default function VideoPlayer({
       );
       const newTime = percentage * duration;
 
+      // Only set currentTime — never reload
       video.currentTime = newTime;
       setCurrentTime(newTime);
       onSeek?.(newTime);
@@ -219,7 +342,6 @@ export default function VideoPlayer({
     [isHost, duration, onSeek],
   );
 
-  // ─── VOLUME ───
   const handleVolumeChange = (e) => {
     const val = parseFloat(e.target.value);
     if (videoRef.current) videoRef.current.volume = val;
@@ -234,7 +356,22 @@ export default function VideoPlayer({
     setIsMuted(newMuted);
   };
 
-  // ─── FULLSCREEN ───
+  // ─── TOGGLE SUBTITLES ───
+  const toggleSubtitles = useCallback(() => {
+    if (!videoRef.current) return;
+    const tracks = videoRef.current.textTracks;
+    if (tracks.length === 0) return;
+
+    const newEnabled = !subtitlesEnabled;
+
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].mode = newEnabled ? "showing" : "hidden";
+    }
+
+    setSubtitlesEnabled(newEnabled);
+    console.log(`Subtitles ${newEnabled ? "enabled" : "disabled"}`);
+  }, [subtitlesEnabled]);
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -247,15 +384,13 @@ export default function VideoPlayer({
   };
 
   useEffect(() => {
-    const onFullscreenChange = () => {
+    const onFsChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () =>
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
-  // ─── CONTROLS AUTO-HIDE ───
   const handleMouseMove = () => {
     setShowControls(true);
     clearTimeout(controlsTimer.current);
@@ -264,7 +399,6 @@ export default function VideoPlayer({
     }
   };
 
-  // ─── FORMAT TIME ───
   const formatTime = (secs) => {
     if (!secs || isNaN(secs)) return "0:00";
     const h = Math.floor(secs / 3600);
@@ -291,12 +425,7 @@ export default function VideoPlayer({
         if (isPlaying) setShowControls(false);
       }}
     >
-      {/* ─── THE VIDEO ELEMENT ─── */}
-      {/* 
-        width/height 100% + object-contain is critical
-        Without this the video element has no size
-        and you only hear audio
-      */}
+      {/* ─── VIDEO ELEMENT ─── */}
       <video
         ref={videoRef}
         className="w-full h-full"
@@ -309,16 +438,31 @@ export default function VideoPlayer({
         preload="metadata"
         crossOrigin="anonymous"
         onClick={handlePlayPause}
-      />
+      >
+        {vttUrl && (
+          <track
+            key={vttUrl}
+            kind="subtitles"
+            src={vttUrl}
+            srcLang="en"
+            label="English"
+            default
+          />
+        )}
+      </video>
 
       {/* ─── LOADING SPINNER ─── */}
       {isLoading && (
         <div
           className="absolute inset-0 flex items-center
-                        justify-center bg-black/50 pointer-events-none"
+                        justify-center bg-black/50
+                        pointer-events-none"
         >
           <div className="flex flex-col items-center gap-3">
-            <Loader className="w-8 h-8 text-red-500 animate-spin" />
+            <Loader
+              className="w-8 h-8 text-red-500
+                               animate-spin"
+            />
             <p className="text-white text-sm">Loading video...</p>
           </div>
         </div>
@@ -343,12 +487,13 @@ export default function VideoPlayer({
       {/* ─── BUFFERING NOTICE ─── */}
       {bufferingUsers && bufferingUsers.length > 0 && (
         <div
-          className="absolute top-4 left-1/2 -translate-x-1/2
-                        z-10"
+          className="absolute top-4 left-1/2
+                        -translate-x-1/2 z-10"
         >
           <div
-            className="bg-black/80 text-white text-xs px-4 py-2
-                          rounded-full flex items-center gap-2"
+            className="bg-black/80 text-white text-xs
+                          px-4 py-2 rounded-full flex
+                          items-center gap-2"
           >
             <WifiOff className="w-3.5 h-3.5 text-yellow-400" />
             Waiting for {bufferingUsers.map((u) => u.name).join(", ")}...
@@ -360,9 +505,10 @@ export default function VideoPlayer({
       {isHost && (
         <div className="absolute top-4 left-4 z-10">
           <div
-            className="bg-yellow-500/20 border border-yellow-500/40
-                          text-yellow-400 text-xs px-3 py-1.5
-                          rounded-full flex items-center gap-1.5
+            className="bg-yellow-500/20 border
+                          border-yellow-500/40 text-yellow-400
+                          text-xs px-3 py-1.5 rounded-full
+                          flex items-center gap-1.5
                           backdrop-blur-sm"
           >
             <Crown className="w-3 h-3" />
@@ -371,48 +517,30 @@ export default function VideoPlayer({
         </div>
       )}
 
-      {/* ─── VIEWER BADGE ─── */}
-      {!isHost && !isLoading && (
-        <div
-          className={`
-            absolute top-4 left-4 z-10 transition-opacity duration-300
-            ${showControls ? "opacity-100" : "opacity-0"}
-          `}
-        >
-          <div
-            className="bg-black/60 text-gray-400 text-xs
-                          px-3 py-1.5 rounded-full backdrop-blur-sm"
-          >
-            Host controls playback
-          </div>
-        </div>
-      )}
-
       {/* ─── CONTROLS OVERLAY ─── */}
       <div
         className={`
           absolute bottom-0 left-0 right-0 z-10
-          bg-gradient-to-t from-black via-black/40 to-transparent
-          px-4 pb-4 pt-12 transition-opacity duration-300
+          bg-gradient-to-t from-black via-black/40
+          to-transparent px-4 pb-4 pt-12
+          transition-opacity duration-300
           ${showControls || !isPlaying ? "opacity-100" : "opacity-0"}
         `}
       >
         {/* Progress bar */}
         <div
           className={`
-            relative w-full h-1.5 bg-white/20 rounded-full mb-4
-            transition-all duration-150
+            relative w-full h-1.5 bg-white/20 rounded-full
+            mb-4 transition-all duration-150
             ${isHost ? "cursor-pointer hover:h-3" : "cursor-default"}
           `}
           onClick={handleProgressClick}
         >
-          {/* Filled progress */}
           <div
-            className="absolute left-0 top-0 h-full bg-red-500
-                       rounded-full"
+            className="absolute left-0 top-0 h-full
+                       bg-red-500 rounded-full"
             style={{ width: `${progress}%` }}
           />
-          {/* Scrubber handle */}
           {isHost && (
             <div
               className="absolute top-1/2 -translate-y-1/2
@@ -433,13 +561,6 @@ export default function VideoPlayer({
             <button
               onClick={handlePlayPause}
               disabled={!isHost}
-              title={
-                isHost
-                  ? isPlaying
-                    ? "Pause"
-                    : "Play"
-                  : "Only host can control"
-              }
               className={`
                 text-white transition-all
                 ${
@@ -460,7 +581,8 @@ export default function VideoPlayer({
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleMute}
-                className="text-white hover:text-red-400 transition"
+                className="text-white hover:text-red-400
+                           transition"
               >
                 {isMuted || volume === 0 ? (
                   <VolumeX className="w-4 h-4" />
@@ -475,8 +597,8 @@ export default function VideoPlayer({
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-20 h-1 accent-red-500 cursor-pointer
-                           hidden sm:block"
+                className="w-20 h-1 accent-red-500
+                           cursor-pointer hidden sm:block"
               />
             </div>
 
@@ -491,17 +613,38 @@ export default function VideoPlayer({
           </div>
 
           {/* Right controls */}
-          <button
-            onClick={toggleFullscreen}
-            className="text-white hover:text-red-400 transition"
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-          >
-            {isFullscreen ? (
-              <Minimize className="w-4 h-4" />
-            ) : (
-              <Maximize className="w-4 h-4" />
+          <div className="flex items-center gap-3">
+            {/* Subtitle toggle — only show if subtitle exists */}
+            {vttUrl && (
+              <button
+                onClick={toggleSubtitles}
+                title={subtitlesEnabled ? "Hide subtitles" : "Show subtitles"}
+                className={`
+                  transition
+                  ${
+                    subtitlesEnabled
+                      ? "text-red-400"
+                      : "text-gray-500 hover:text-white"
+                  }
+                `}
+              >
+                <Subtitles className="w-4 h-4" />
+              </button>
             )}
-          </button>
+
+            {/* Fullscreen */}
+            <button
+              onClick={toggleFullscreen}
+              className="text-white hover:text-red-400
+                         transition"
+            >
+              {isFullscreen ? (
+                <Minimize className="w-4 h-4" />
+              ) : (
+                <Maximize className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

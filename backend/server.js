@@ -12,8 +12,31 @@ const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const movieRoutes = require("./routes/movieRoutes");
 const roomRoutes = require("./routes/roomRoutes");
+const friendRoutes = require("./routes/friendRoutes");
 
 dotenv.config();
+
+const rateLimit = require("express-rate-limit");
+
+// General rate limiter — 100 requests per 15 minutes per IP
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: {
+    message: "Too many requests. Please wait a few minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Stricter limiter for auth routes — 10 attempts per 15 minutes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: {
+    message: "Too many login attempts. Please wait 15 minutes.",
+  },
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -70,6 +93,9 @@ app.use(
 app.options(/.*/, cors());
 
 // ─── MIDDLEWARE ───
+// Apply general limiter to all routes
+app.use(generalLimiter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -106,7 +132,11 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/movies", movieRoutes);
 app.use("/api/rooms", roomRoutes);
+app.use("/api/friends", friendRoutes);
 
+// Apply strict limiter to auth routes only
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
 // ─── GLOBAL ERROR HANDLER ───
 // Catches any unhandled errors in routes
 app.use((err, req, res, next) => {

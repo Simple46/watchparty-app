@@ -18,18 +18,20 @@ const getCloudinarySignature = (req, res) => {
   try {
     const timestamp = Math.round(new Date().getTime() / 1000);
     const type = req.query.type || "video";
-    const folder =
-      type === "image" ? "watchparty/thumbnails" : "watchparty/movies";
 
-    // Sign with ONLY folder and timestamp
-    // No transformation params here — we apply those
-    // to the URL after upload, not during upload
-    // This keeps the signature simple and impossible to mismatch
+    // Determine folder based on file type
+    const folderMap = {
+      video: "watchparty/movies",
+      image: "watchparty/thumbnails",
+      raw: "watchparty/subtitles",
+    };
+
+    const folder = folderMap[type] || "watchparty/movies";
+
+    // Sign with only folder and timestamp
+    // Simple and impossible to mismatch
     const signature = cloudinary.utils.api_sign_request(
-      {
-        timestamp,
-        folder,
-      },
+      { timestamp, folder },
       process.env.CLOUDINARY_API_SECRET,
     );
 
@@ -47,14 +49,23 @@ const getCloudinarySignature = (req, res) => {
     });
   }
 };
-// ─────────────────────────────────────────
+
+//────────────────────────────────────────
 // SAVE MOVIE AFTER DIRECT UPLOAD
 // POST /api/admin/save-movie
 // ─────────────────────────────────────────
 const saveMovie = async (req, res) => {
   try {
-    const { title, description, cloudinaryId, thumbnail, size, duration } =
-      req.body;
+    const {
+      title,
+      description,
+      cloudinaryId,
+      thumbnail,
+      subtitleUrl,
+      subtitleCloudinaryId,
+      size,
+      duration,
+    } = req.body;
 
     if (!title || !cloudinaryId) {
       return res.status(400).json({
@@ -62,20 +73,19 @@ const saveMovie = async (req, res) => {
       });
     }
 
-    // Build the direct streamable video URL from scratch
-    // using the public_id Cloudinary gave us
-    // This is ALWAYS correct regardless of what Cloudinary
-    // returned as secure_url
-    // Format: https://res.cloudinary.com/CLOUD_NAME/video/upload/TRANSFORMATIONS/PUBLIC_ID.mp4
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
 
-    // Apply H.264 video codec transformation so all browsers
-    // can display the video visually not just audio
-    const videoUrl = `https://res.cloudinary.com/${cloudName}/video/upload/vc_h264,ac_aac,q_auto/${cloudinaryId}.mp4`;
+    // vc_auto works for both H.264 and HEVC videos
+    // ac_aac ensures compatible audio
+    // q_auto optimizes quality automatically
+    // Add fl_progressive to move moov atom to beginning
+    // This is what enables seeking on chunked uploads
+    const videoUrl = `https://res.cloudinary.com/${cloudName}/video/upload/vc_auto,ac_aac,q_auto,fl_progressive/${cloudinaryId}.mp4`;
 
     console.log(`\n💾 Saving movie: "${title}"`);
     console.log(`   Cloudinary ID: ${cloudinaryId}`);
     console.log(`   Video URL: ${videoUrl}`);
+    console.log(`   Subtitle URL: ${subtitleUrl || "none"}`);
 
     const movie = await safeQuery((db) =>
       db.movie.create({
@@ -85,6 +95,8 @@ const saveMovie = async (req, res) => {
           videoUrl,
           thumbnail: thumbnail || null,
           cloudinaryId,
+          subtitleUrl: subtitleUrl || null,
+          subtitleCloudinaryId: subtitleCloudinaryId || null,
           size: size || null,
           duration: duration ? Math.round(duration) : null,
         },
@@ -99,6 +111,7 @@ const saveMovie = async (req, res) => {
     });
   } catch (error) {
     console.error("Save movie error:", error);
+    console.error("Error details:", error.message);
     res.status(500).json({
       message: "Failed to save movie: " + error.message,
     });
@@ -327,6 +340,7 @@ const deleteMovie = async (req, res) => {
 
     console.log(`\n🗑️  Deleting: "${movie.title}"`);
 
+    // Close active rooms
     await safeQuery((db) =>
       db.room.updateMany({
         where: { movieId: movie.id, isActive: true },
@@ -334,8 +348,10 @@ const deleteMovie = async (req, res) => {
       }),
     );
 
+    // Delete video from Cloudinary
     await deleteFromCloudinary(movie.cloudinaryId, "video");
 
+    // Delete thumbnail from Cloudinary if exists
     if (movie.thumbnail && movie.thumbnail.includes("cloudinary")) {
       try {
         const urlParts = movie.thumbnail.split("/upload/");
@@ -350,6 +366,17 @@ const deleteMovie = async (req, res) => {
       }
     }
 
+    // Delete subtitle from Cloudinary if exists
+    if (movie.subtitleCloudinaryId) {
+      try {
+        await deleteFromCloudinary(movie.subtitleCloudinaryId, "raw");
+        console.log("✅ Subtitle deleted from Cloudinary");
+      } catch (subError) {
+        console.warn("Subtitle delete warning:", subError.message);
+      }
+    }
+
+    // Delete from database
     await safeQuery((db) => db.movie.delete({ where: { id: req.params.id } }));
 
     console.log(`✅ Movie deleted: "${movie.title}"`);

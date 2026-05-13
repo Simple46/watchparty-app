@@ -309,6 +309,25 @@ function WatchRoomContent() {
             </span>
           </button>
 
+          {/* leave room */}
+          <button
+            onClick={handleLeaveRoom}
+            className="
+      flex items-center gap-2
+      bg-red-600 hover:bg-red-700
+      text-white
+      px-3 py-2
+      rounded-lg
+      transition
+      text-sm font-medium
+      shadow-lg
+    "
+          >
+            <ArrowLeft className="w-4 h-4" />
+
+            <span className="hidden sm:block">Leave Room</span>
+          </button>
+
           {/* mobile toggle */}
           <button
             onClick={() => setShowSidebar((prev) => !prev)}
@@ -339,6 +358,7 @@ function WatchRoomContent() {
               <VideoPlayer
                 videoUrl={roomData.movie.videoUrl}
                 isHost={isHost}
+                subtitleUrl={roomData.movie.subtitleUrl}
                 syncEvent={syncEvent}
                 onPlay={emitPlay}
                 onPause={emitPause}

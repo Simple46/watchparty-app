@@ -52,6 +52,51 @@ router.get("/", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────
+// PROXY SUBTITLE FILE
+// GET /api/movies/subtitle?url=...
+// Fetches subtitle from Cloudinary and returns it
+// This avoids CORS issues on the frontend
+// ─────────────────────────────────────────
+router.get("/subtitle", async (req, res) => {
+  try {
+    const { url } = req.query;
+
+    if (!url) {
+      return res.status(400).json({
+        message: "No URL provided",
+      });
+    }
+
+    // Only allow Cloudinary URLs for security
+    if (!url.includes("cloudinary.com")) {
+      return res.status(403).json({
+        message: "Only Cloudinary URLs are allowed",
+      });
+    }
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: "Failed to fetch subtitle",
+      });
+    }
+
+    const text = await response.text();
+
+    // Set correct content type for subtitle files
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.send(text);
+  } catch (error) {
+    console.error("Subtitle proxy error:", error);
+    res.status(500).json({
+      message: "Failed to proxy subtitle",
+    });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const movie = await safeQuery((db) =>
