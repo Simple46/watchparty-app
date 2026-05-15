@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
+
 import { useAuth } from "../../../context/AuthContext";
 import Link from "next/link";
 
@@ -21,6 +23,7 @@ export default function RegisterPage() {
   // Loading state — disables the button while the request is in progress
   // prevents double submissions
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Called every time the user types in any input field
   // e.target.name matches the "name" attribute on each input
@@ -130,18 +133,30 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-gray-400 mb-1.5">
               Password
             </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="At least 6 characters"
-              required
-              className="w-full bg-gray-800 text-white placeholder-gray-500
-                         border border-gray-700 rounded-lg px-4 py-3 text-sm
-                         focus:outline-none focus:border-red-500 
-                         focus:ring-1 focus:ring-red-500 transition"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter your password"
+                required
+                className="w-full bg-gray-800 text-white placeholder-gray-500
+                                      border border-gray-700 rounded-lg px-4 py-3 pr-12 text-sm
+                                      focus:outline-none focus:border-red-500 
+                                      focus:ring-1 focus:ring-red-500 transition"
+              />
+
+              {/* Eye Icon */}
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2
+                                      text-gray-400 hover:text-black transition"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
 
           {/* Submit Button */}

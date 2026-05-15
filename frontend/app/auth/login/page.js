@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import Link from "next/link";
 
@@ -11,8 +12,12 @@ export default function LoginPage() {
     email: "",
     password: "",
   });
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Password visibility state
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -40,15 +45,16 @@ export default function LoginPage() {
   return (
     <div
       className="min-h-screen bg-gray-950 flex items-center 
-                    justify-center px-4"
+                 justify-center px-4"
     >
       <div
         className="w-full max-w-md bg-gray-900 rounded-2xl 
-                      p-8 shadow-2xl"
+                   p-8 shadow-2xl"
       >
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white"> WatchParty</h1>
+          <h1 className="text-3xl font-bold text-white">WatchParty</h1>
+
           <p className="text-gray-400 mt-2 text-sm">
             Sign in to continue watching
           </p>
@@ -58,7 +64,7 @@ export default function LoginPage() {
         {error && (
           <div
             className="bg-red-500/10 border border-red-500/50 
-                          text-red-400 px-4 py-3 rounded-lg mb-6 text-sm"
+                       text-red-400 px-4 py-3 rounded-lg mb-6 text-sm"
           >
             {error}
           </div>
@@ -71,6 +77,7 @@ export default function LoginPage() {
             <label className="block text-sm font-medium text-gray-400 mb-1.5">
               Email Address
             </label>
+
             <input
               type="email"
               name="email"
@@ -89,22 +96,35 @@ export default function LoginPage() {
           <div>
             <label
               className="block text-sm font-medium 
-                               text-gray-400 mb-1.5"
+                         text-gray-400 mb-1.5"
             >
               Password
             </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Enter your password"
-              required
-              className="w-full bg-gray-800 text-white placeholder-gray-500
-                         border border-gray-700 rounded-lg px-4 py-3 text-sm
-                         focus:outline-none focus:border-red-500 
-                         focus:ring-1 focus:ring-red-500 transition"
-            />
+
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter your password"
+                required
+                className="w-full bg-gray-800 text-white placeholder-gray-500
+                           border border-gray-700 rounded-lg px-4 py-3 pr-12 text-sm
+                           focus:outline-none focus:border-red-500 
+                           focus:ring-1 focus:ring-red-500 transition"
+              />
+
+              {/* Eye Icon */}
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2
+                           text-gray-400 hover:text-black transition"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
 
           {/* Submit Button */}
@@ -135,15 +155,19 @@ export default function LoginPage() {
         {/* Admin test credentials — remove this in production */}
         {/* <div
           className="mt-6 p-4 bg-gray-800/60 rounded-lg border 
-                        border-gray-700"
+                     border-gray-700"
         >
           <p className="text-xs text-gray-500 text-center mb-2 font-medium">
             Test Admin Account
           </p>
+
           <p className="text-xs text-gray-400 text-center">
             admin@watchparty.com
           </p>
-          <p className="text-xs text-gray-400 text-center">admin123</p>
+
+          <p className="text-xs text-gray-400 text-center">
+            admin123
+          </p>
         </div> */}
       </div>
     </div>
