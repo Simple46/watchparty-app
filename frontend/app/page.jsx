@@ -89,8 +89,8 @@ function HomeContent() {
                 Watch Together, <span className="text-red-400">Anywhere</span>
               </h1>
               <p className="text-gray-400 text-base mt-2">
-                Pick a movie, invite your friends, and watch in perfect sync —
-                no matter where they are.
+                Pick a movie, invite your friends, and watch in perfect sync, no
+                matter where they are.
               </p>
             </div>
           </div>

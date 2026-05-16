@@ -152,23 +152,6 @@ export default function LoginPage() {
           </Link>
         </p>
 
-        {/* Admin test credentials — remove this in production */}
-        {/* <div
-          className="mt-6 p-4 bg-gray-800/60 rounded-lg border 
-                     border-gray-700"
-        >
-          <p className="text-xs text-gray-500 text-center mb-2 font-medium">
-            Test Admin Account
-          </p>
-
-          <p className="text-xs text-gray-400 text-center">
-            admin@watchparty.com
-          </p>
-
-          <p className="text-xs text-gray-400 text-center">
-            admin123
-          </p>
-        </div> */}
       </div>
     </div>
   );
