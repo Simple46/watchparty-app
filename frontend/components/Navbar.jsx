@@ -170,7 +170,7 @@ export default function Navbar() {
                         <Link href="/football">
                           <button
                             className="flex items-center gap-2 text-gray-400
-                     hover:text-white transition text-sm"
+                     hover:text-white transition text-sm p-2"
                           >
                             <Radio className="w-4 h-4" />
                             <span className="hidden sm:block">
