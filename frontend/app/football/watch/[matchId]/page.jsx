@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft, Users } from "lucide-react";
-import ProtectedRoute from "../../../../../components/ProtectedRoute";
-import api from "../../../../../lib/api";
+import ProtectedRoute from "../../../../components/ProtectedRoute";
+// import api from "../../../../lib/api";
 
 function WatchMatchContent() {
   const searchParams = useSearchParams();
