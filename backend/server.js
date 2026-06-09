@@ -13,6 +13,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const movieRoutes = require("./routes/movieRoutes");
 const roomRoutes = require("./routes/roomRoutes");
 const friendRoutes = require("./routes/friendRoutes");
+const footballRoutes = require("./routes/footballRoutes");
 
 dotenv.config();
 
@@ -133,6 +134,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/movies", movieRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/friends", friendRoutes);
+app.use("/api/football", footballRoutes);
 
 // Apply strict limiter to auth routes only
 app.use("/api/auth/login", authLimiter);

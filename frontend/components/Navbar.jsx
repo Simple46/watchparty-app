@@ -4,7 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
+
+
 import {
+  Radio,
   Tv,
   Search,
   User,
@@ -162,6 +165,18 @@ export default function Navbar() {
                         >
                           <User className="w-4 h-4" />
                           My Profile
+                        </Link>
+
+                        <Link href="/football">
+                          <button
+                            className="flex items-center gap-2 text-gray-400
+                     hover:text-white transition text-sm"
+                          >
+                            <Radio className="w-4 h-4" />
+                            <span className="hidden sm:block">
+                              Live Football
+                            </span>
+                          </button>
                         </Link>
 
                         {/* Admin link — only shown to admins */}
