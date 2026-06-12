@@ -248,6 +248,7 @@ const getAllMovies = async (req, res) => {
     const movies = await safeQuery((db) =>
       db.movie.findMany({
         orderBy: { createdAt: "desc" },
+        // No explicit select
         include: {
           _count: { select: { rooms: true } },
         },

@@ -7,27 +7,16 @@ router.get("/", async (req, res) => {
     const movies = await safeQuery((db) =>
       db.movie.findMany({
         orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          thumbnail: true,
-          duration: true,
-          size: true,
-          createdAt: true,
+        // No explicit select — return everything
+        include: {
           _count: {
-            select: {
-              // Only count active rooms
-              rooms: true,
-            },
+            select: { rooms: true },
           },
         },
       }),
     );
 
-    // Filter the count to only include active rooms
-    // since Prisma _count doesn't support where on
-    // scalar aggregates in all versions
+    // Count active rooms separately
     const moviesWithActiveRooms = await Promise.all(
       movies.map(async (movie) => {
         const activeRoomCount = await safeQuery((db) =>
@@ -45,13 +34,16 @@ router.get("/", async (req, res) => {
       }),
     );
 
-    res.status(200).json({ movies: moviesWithActiveRooms });
+    res.status(200).json({
+      movies: moviesWithActiveRooms,
+    });
   } catch (error) {
     console.error("Get movies error:", error);
-    res.status(500).json({ message: "Failed to fetch movies" });
+    res.status(500).json({
+      message: "Failed to fetch movies",
+    });
   }
 });
-
 // ─────────────────────────────────────────
 // PROXY SUBTITLE FILE
 // GET /api/movies/subtitle?url=...
@@ -97,22 +89,15 @@ router.get("/subtitle", async (req, res) => {
   }
 });
 
-
 router.get("/:id", async (req, res) => {
   try {
     const movie = await safeQuery((db) =>
       db.movie.findUnique({
         where: { id: req.params.id },
-        select: {
-          id: true,
-          title: true,
-          thumbnail: true,
-          duration: true,
-          rating: true,
-          releaseYear: true,
-          genres: true,
-          description: true,
-          // Add any other fields you need EXCEPT cloudinaryName
+        // Remove the explicit select entirely
+        // Let Prisma return all fields
+        // This way adding new fields never breaks the query
+        include: {
           rooms: {
             where: { isActive: true },
             include: {
@@ -133,7 +118,9 @@ router.get("/:id", async (req, res) => {
     );
 
     if (!movie) {
-      return res.status(404).json({ message: "Movie not found" });
+      return res.status(404).json({
+        message: "Movie not found",
+      });
     }
 
     res.status(200).json({ movie });
@@ -141,7 +128,6 @@ router.get("/:id", async (req, res) => {
     console.error("Get movie error:", error);
     res.status(500).json({
       message: "Failed to fetch movie",
-      error: error.message, // Send actual error in dev
     });
   }
 });
