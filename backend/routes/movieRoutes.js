@@ -97,12 +97,22 @@ router.get("/subtitle", async (req, res) => {
   }
 });
 
+
 router.get("/:id", async (req, res) => {
   try {
     const movie = await safeQuery((db) =>
       db.movie.findUnique({
         where: { id: req.params.id },
-        include: {
+        select: {
+          id: true,
+          title: true,
+          thumbnail: true,
+          duration: true,
+          rating: true,
+          releaseYear: true,
+          genres: true,
+          description: true,
+          // Add any other fields you need EXCEPT cloudinaryName
           rooms: {
             where: { isActive: true },
             include: {
@@ -113,7 +123,6 @@ router.get("/:id", async (req, res) => {
                   avatar: true,
                 },
               },
-              // Count actual members in each room
               _count: {
                 select: { members: true },
               },
@@ -124,9 +133,7 @@ router.get("/:id", async (req, res) => {
     );
 
     if (!movie) {
-      return res.status(404).json({
-        message: "Movie not found",
-      });
+      return res.status(404).json({ message: "Movie not found" });
     }
 
     res.status(200).json({ movie });
@@ -134,8 +141,11 @@ router.get("/:id", async (req, res) => {
     console.error("Get movie error:", error);
     res.status(500).json({
       message: "Failed to fetch movie",
+      error: error.message, // Send actual error in dev
     });
   }
 });
+
+
 
 module.exports = router;
