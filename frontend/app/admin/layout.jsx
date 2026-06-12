@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   Tv,
+  Search,
 } from "lucide-react";
 
 // Navigation items for the sidebar
@@ -33,6 +34,7 @@ const navItems = [
     href: "/admin/movies",
     icon: Film,
   },
+  { href: "/admin/browse", label: "Browse Movies", icon: Search },
   {
     label: "Watch Rooms",
     href: "/admin/rooms",

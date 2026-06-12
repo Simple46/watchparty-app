@@ -37,25 +37,17 @@ function WatchRoomContent() {
   // ROOM STATE
   // ─────────────────────────────────────
   const [roomData, setRoomData] = useState(null);
-
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState("");
 
   // ─────────────────────────────────────
   // UI STATE
   // ─────────────────────────────────────
-
-  // mobile now shows VIDEO FIRST
   const [showSidebar, setShowSidebar] = useState(false);
-
   const [activeTab, setActiveTab] = useState("chat");
-
   const [copiedCode, setCopiedCode] = useState(false);
 
   const timeoutRef = useRef(null);
-
-  // prevent double leave
   const hasLeftRef = useRef(false);
 
   // ─────────────────────────────────────
@@ -65,9 +57,7 @@ function WatchRoomContent() {
     const fetchRoom = async () => {
       try {
         setLoading(true);
-
         const response = await api.get(`/api/rooms/${roomCode}`);
-
         setRoomData(response.data.room);
       } catch (err) {
         if (err.response?.status === 404) {
@@ -117,9 +107,7 @@ function WatchRoomContent() {
   const copyRoomCode = async () => {
     try {
       await navigator.clipboard.writeText(roomCode);
-
       setCopiedCode(true);
-
       timeoutRef.current = setTimeout(() => {
         setCopiedCode(false);
       }, 2000);
@@ -128,7 +116,6 @@ function WatchRoomContent() {
     }
   };
 
-  // cleanup timeout
   useEffect(() => {
     return () => {
       clearTimeout(timeoutRef.current);
@@ -140,20 +127,15 @@ function WatchRoomContent() {
   // ─────────────────────────────────────
   const handleLeaveRoom = useCallback(async () => {
     if (hasLeftRef.current) return;
-
     hasLeftRef.current = true;
 
     try {
       leaveRoom();
-
       await api.post(`/api/rooms/${roomCode}/leave`).catch(() => {});
-
       disconnectSocket();
-
       router.push(`/movies/${roomData?.movie?.id || ""}`);
     } catch (err) {
       console.error("Leave room error:", err);
-
       router.push("/");
     }
   }, [leaveRoom, roomCode, roomData, router]);
@@ -164,14 +146,12 @@ function WatchRoomContent() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/rooms/${roomCode}/leave`;
-
       const token = localStorage.getItem("watchparty_token");
 
       if (navigator.sendBeacon && token) {
         const blob = new Blob([JSON.stringify({})], {
           type: "application/json",
         });
-
         navigator.sendBeacon(url, blob);
       }
 
@@ -179,7 +159,6 @@ function WatchRoomContent() {
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
-
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
@@ -193,7 +172,6 @@ function WatchRoomContent() {
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-
           <p className="text-white text-sm">Loading watch party...</p>
         </div>
       </div>
@@ -210,13 +188,10 @@ function WatchRoomContent() {
           <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-5">
             <Tv className="w-8 h-8 text-gray-600" />
           </div>
-
           <h2 className="text-white text-xl font-bold mb-2">
             Room Not Available
           </h2>
-
           <p className="text-gray-400 text-sm mb-6">{error}</p>
-
           <Link href="/">
             <button className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-6 py-3 rounded-xl transition">
               Back to Movies
@@ -247,23 +222,18 @@ function WatchRoomContent() {
             <p className="text-white font-semibold text-sm truncate">
               {roomData?.movie?.title || "Watch Party"}
             </p>
-
             <div className="flex items-center gap-2 mt-0.5">
-              {/* connection */}
               <div
                 className={`w-1.5 h-1.5 rounded-full ${
                   isConnected ? "bg-green-500" : "bg-red-500"
                 }`}
               />
-
               <span className="text-gray-500 text-xs">
                 {isConnected ? "Connected" : "Reconnecting..."}
               </span>
-
               {isHost && (
                 <>
                   <span className="text-gray-700">·</span>
-
                   <div className="flex items-center gap-1 text-yellow-400 text-xs">
                     <Crown className="w-3 h-3" />
                     Host
@@ -276,17 +246,14 @@ function WatchRoomContent() {
 
         {/* RIGHT */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* room code */}
           <button
             onClick={copyRoomCode}
             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-lg transition"
           >
             <span className="text-gray-400 text-xs hidden sm:block">Room:</span>
-
             <span className="text-white text-xs font-mono font-bold tracking-wider">
               {roomCode}
             </span>
-
             {copiedCode ? (
               <Check className="w-3.5 h-3.5 text-green-400" />
             ) : (
@@ -294,7 +261,6 @@ function WatchRoomContent() {
             )}
           </button>
 
-          {/* members */}
           <button
             onClick={() => {
               setShowSidebar(true);
@@ -303,32 +269,19 @@ function WatchRoomContent() {
             className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-lg transition"
           >
             <Users className="w-3.5 h-3.5 text-gray-400" />
-
             <span className="text-white text-xs font-medium">
               {members.length}
             </span>
           </button>
 
-          {/* leave room */}
           <button
             onClick={handleLeaveRoom}
-            className="
-      flex items-center gap-2
-      bg-red-600 hover:bg-red-700
-      text-white
-      px-3 py-2
-      rounded-lg
-      transition
-      text-sm font-medium
-      shadow-lg
-    "
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition text-sm font-medium shadow-lg"
           >
             <ArrowLeft className="w-4 h-4" />
-
             <span className="hidden sm:block">Leave Room</span>
           </button>
 
-          {/* mobile toggle */}
           <button
             onClick={() => setShowSidebar((prev) => !prev)}
             className="lg:hidden text-gray-400 hover:text-white bg-gray-800 border border-gray-700 p-2 rounded-lg transition"
@@ -355,18 +308,55 @@ function WatchRoomContent() {
         >
           {roomData?.movie?.videoUrl ? (
             <div className="w-full max-w-5xl">
-              <VideoPlayer
-                videoUrl={roomData.movie.videoUrl}
-                isHost={isHost}
-                subtitleUrl={roomData.movie.subtitleUrl}
-                syncEvent={syncEvent}
-                onPlay={emitPlay}
-                onPause={emitPause}
-                onSeek={emitSeek}
-                onBuffering={emitBuffering}
-                onBufferingDone={emitBufferingDone}
-                bufferingUsers={bufferingUsers}
-              />
+              {roomData.movie.videoUrl.includes("vidsrc") ||
+              roomData.movie.videoUrl.includes("embed") ? (
+                // VidSrc iframe player
+                <div
+                  className="relative w-full bg-black rounded-xl overflow-hidden"
+                  style={{ aspectRatio: "16/9" }}
+                >
+                  {/* Non-host warning */}
+                  {!isHost && (
+                    <div className="absolute top-4 left-4 z-10">
+                      <div className="bg-black/60 text-gray-400 text-xs px-3 py-1.5 rounded-full backdrop-blur-sm">
+                        Start playing at the same time as others
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Host badge */}
+                  {isHost && (
+                    <div className="absolute top-4 left-4 z-10">
+                      <div className="bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 backdrop-blur-sm">
+                        <Crown className="w-3 h-3" />
+                        Start the movie when everyone is ready
+                      </div>
+                    </div>
+                  )}
+
+                  <iframe
+                    src={roomData.movie.videoUrl}
+                    className="w-full h-full"
+                    allowFullScreen
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    style={{ border: "none" }}
+                  />
+                </div>
+              ) : (
+                // Direct video player (for uploaded movies)
+                <VideoPlayer
+                  videoUrl={roomData.movie.videoUrl}
+                  subtitleUrl={roomData.movie.subtitleUrl}
+                  isHost={isHost}
+                  syncEvent={syncEvent}
+                  onPlay={emitPlay}
+                  onPause={emitPause}
+                  onSeek={emitSeek}
+                  onBuffering={emitBuffering}
+                  onBufferingDone={emitBufferingDone}
+                  bufferingUsers={bufferingUsers}
+                />
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">
@@ -389,7 +379,6 @@ function WatchRoomContent() {
         >
           {/* tabs */}
           <div className="flex border-b border-gray-800 flex-shrink-0">
-            {/* chat */}
             <button
               onClick={() => setActiveTab("chat")}
               className={`
@@ -406,7 +395,6 @@ function WatchRoomContent() {
               Chat
             </button>
 
-            {/* members */}
             <button
               onClick={() => setActiveTab("members")}
               className={`

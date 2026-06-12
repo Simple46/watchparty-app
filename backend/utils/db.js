@@ -70,4 +70,31 @@ async function safeQuery(operation) {
   }
 }
 
-module.exports = { db, safeQuery };   
+module.exports = { db, safeQuery };
+
+// const { PrismaClient } = require("@prisma/client");
+
+// const globalForPrisma = global;
+
+// const db =
+//   globalForPrisma.prisma ||
+//   new PrismaClient({
+//     datasources: {
+//       db: {
+//         url: process.env.DATABASE_URL,
+//       },
+//     },
+//     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+//   });
+
+// // Reuse the client during hot reloads in development
+// if (process.env.NODE_ENV !== "production") {
+//   globalForPrisma.prisma = db;
+// }
+
+// // Simple wrapper for queries
+// async function safeQuery(operation) {
+//   return operation(db);
+// }
+
+// module.exports = { db, safeQuery };

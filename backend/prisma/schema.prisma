@@ -31,20 +31,29 @@ model User {
 // MOVIES TABLE
 // ─────────────────────────────────────────
 model Movie {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  videoUrl    String
-  thumbnail   String?
-   subtitleUrl     String? 
-  subtitleCloudinaryId String? 
-  cloudinaryId String
-  cloudinaryName String?
- 
-  duration    Int?
-  size        Float?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  title                String
+  description          String?
+  videoUrl             String   @default("")
+  thumbnail            String?
+  cloudinaryId         String   @default("")
+  subtitleUrl          String?
+  subtitleCloudinaryId String?
+
+  // New TMDB fields
+  tmdbId               String?
+  imdbId               String?
+  releaseYear          String?
+  rating               Float?
+  genres               String?  // stored as comma-separated string
+  backdropUrl          String?
+  source               String   @default("upload")
+  // source: "upload" | "tmdb"
+
+  duration             Int?
+  size                 Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   rooms Room[]
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Play, Users, Clock, Film } from "lucide-react";
+import { Play, Users, Star, Clock, Film } from "lucide-react";
 
 export default function MovieCard({ movie }) {
   // Convert seconds to hours and minutes display
@@ -96,7 +96,7 @@ export default function MovieCard({ movie }) {
         </div>
 
         {/* Card content */}
-        <div className="p-4">
+        {/* <div className="p-4">
           <h3
             className="text-white font-semibold text-sm leading-snug
                          line-clamp-1 group-hover:text-red-400 transition"
@@ -114,7 +114,7 @@ export default function MovieCard({ movie }) {
           )}
 
           <div className="flex items-center justify-between mt-3">
-            {/* Rooms info */}
+          
             {activeRooms > 0 ? (
               <div
                 className="flex items-center gap-1.5 text-green-400
@@ -127,7 +127,7 @@ export default function MovieCard({ movie }) {
               <span className="text-gray-600 text-xs">No active rooms</span>
             )}
 
-            {/* Watch button */}
+           
             <div
               className="text-red-400 text-xs font-medium
                             group-hover:text-red-300 transition flex
@@ -137,7 +137,32 @@ export default function MovieCard({ movie }) {
               <Play className="w-3 h-3 fill-current" />
             </div>
           </div>
-        </div>
+        </div> */}
+
+        {/* Rating + Year if available */}
+        {(movie.rating || movie.releaseYear) && (
+          <div className="flex items-center gap-2 mt-1">
+            {movie.rating && (
+              <div className="flex items-center gap-1">
+                <Star
+                  className="w-3 h-3 text-yellow-400
+                         fill-yellow-400"
+                />
+                <span className="text-yellow-400 text-xs font-medium">
+                  {movie.rating.toFixed(1)}
+                </span>
+              </div>
+            )}
+            {movie.releaseYear && (
+              <span className="text-gray-500 text-xs">{movie.releaseYear}</span>
+            )}
+            {movie.genres && (
+              <span className="text-gray-600 text-xs truncate">
+                {movie.genres.split(",")[0]}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );
