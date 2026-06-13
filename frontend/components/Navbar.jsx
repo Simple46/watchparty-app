@@ -173,9 +173,7 @@ export default function Navbar() {
                      hover:text-white transition text-sm p-2"
                           >
                             <Radio className="w-4 h-4" />
-                            <span className="hidden sm:block">
-                              Live Football
-                            </span>
+                            <span className="block">Live Football</span>
                           </button>
                         </Link>
 
