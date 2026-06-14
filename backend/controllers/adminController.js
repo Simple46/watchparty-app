@@ -336,12 +336,16 @@ const deleteMovie = async (req, res) => {
     );
 
     if (!movie) {
-      return res.status(404).json({ message: "Movie not found" });
+      return res.status(404).json({
+        message: "Movie not found",
+      });
     }
 
-    console.log(`\n🗑️  Deleting: "${movie.title}"`);
+    console.log(
+      `\n🗑️  Deleting: "${movie.title}" (source: ${movie.source || "upload"})`,
+    );
 
-    // Close active rooms
+    // Close any active rooms for this movie
     await safeQuery((db) =>
       db.room.updateMany({
         where: { movieId: movie.id, isActive: true },
@@ -349,11 +353,28 @@ const deleteMovie = async (req, res) => {
       }),
     );
 
-    // Delete video from Cloudinary
-    await deleteFromCloudinary(movie.cloudinaryId, "video");
+    // Only delete from Cloudinary if it was actually uploaded there
+    // TMDB movies (source: "tmdb") and football matches (source: "football")
+    // have fake cloudinaryIds that don't exist in Cloudinary
+    const isCloudinaryUpload =
+      !movie.source ||
+      movie.source === "upload" ||
+      (movie.cloudinaryId &&
+        !movie.cloudinaryId.startsWith("tmdb_") &&
+        !movie.cloudinaryId.startsWith("match_"));
 
-    // Delete thumbnail from Cloudinary if exists
-    if (movie.thumbnail && movie.thumbnail.includes("cloudinary")) {
+    if (isCloudinaryUpload && movie.cloudinaryId) {
+      try {
+        await deleteFromCloudinary(movie.cloudinaryId, "video");
+        console.log("✅ Video deleted from Cloudinary");
+      } catch (cloudErr) {
+        // Log but don't block the delete
+        console.warn("Cloudinary video delete warning:", cloudErr.message);
+      }
+    }
+
+    // Delete thumbnail from Cloudinary only if it's a Cloudinary URL
+    if (movie.thumbnail && movie.thumbnail.includes("res.cloudinary.com")) {
       try {
         const urlParts = movie.thumbnail.split("/upload/");
         if (urlParts.length > 1) {
@@ -361,9 +382,10 @@ const deleteMovie = async (req, res) => {
             .replace(/^v\d+\//, "")
             .replace(/\.[^/.]+$/, "");
           await deleteFromCloudinary(publicId, "image");
+          console.log("✅ Thumbnail deleted from Cloudinary");
         }
-      } catch (thumbError) {
-        console.warn("Thumbnail delete warning:", thumbError.message);
+      } catch (thumbErr) {
+        console.warn("Thumbnail delete warning:", thumbErr.message);
       }
     }
 
@@ -372,17 +394,35 @@ const deleteMovie = async (req, res) => {
       try {
         await deleteFromCloudinary(movie.subtitleCloudinaryId, "raw");
         console.log("✅ Subtitle deleted from Cloudinary");
-      } catch (subError) {
-        console.warn("Subtitle delete warning:", subError.message);
+      } catch (subErr) {
+        console.warn("Subtitle delete warning:", subErr.message);
       }
     }
 
-    // Delete from database
+    // Delete room members first (foreign key constraint)
+    await safeQuery((db) =>
+      db.roomMember.deleteMany({
+        where: {
+          room: { movieId: movie.id },
+        },
+      }),
+    );
+
+    // Delete rooms
+    await safeQuery((db) =>
+      db.room.deleteMany({
+        where: { movieId: movie.id },
+      }),
+    );
+
+    // Finally delete the movie from database
     await safeQuery((db) => db.movie.delete({ where: { id: req.params.id } }));
 
     console.log(`✅ Movie deleted: "${movie.title}"`);
 
-    res.status(200).json({ message: "Movie deleted successfully" });
+    res.status(200).json({
+      message: "Movie deleted successfully",
+    });
   } catch (error) {
     console.error("Delete movie error:", error);
     res.status(500).json({

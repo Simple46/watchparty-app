@@ -1,23 +1,19 @@
 const express = require("express");
 const router = express.Router();
 const { db, safeQuery } = require("../utils/db"); // ← update import
-
 router.get("/", async (req, res) => {
   try {
     const movies = await safeQuery((db) =>
       db.movie.findMany({
         orderBy: { createdAt: "desc" },
-        // No explicit select — return everything
         include: {
-          _count: {
-            select: { rooms: true },
-          },
+          _count: { select: { rooms: true } },
         },
       }),
     );
 
-    // Count active rooms separately
-    const moviesWithActiveRooms = await Promise.all(
+    // Count active rooms per movie
+    const moviesWithData = await Promise.all(
       movies.map(async (movie) => {
         const activeRoomCount = await safeQuery((db) =>
           db.room.count({
@@ -34,8 +30,21 @@ router.get("/", async (req, res) => {
       }),
     );
 
+    // Extract all unique genres for the filter UI
+    const allGenres = new Set();
+    moviesWithData.forEach((movie) => {
+      if (movie.genres) {
+        movie.genres
+          .split(",")
+          .map((g) => g.trim())
+          .filter(Boolean)
+          .forEach((g) => allGenres.add(g));
+      }
+    });
+
     res.status(200).json({
-      movies: moviesWithActiveRooms,
+      movies: moviesWithData,
+      genres: Array.from(allGenres).sort(),
     });
   } catch (error) {
     console.error("Get movies error:", error);
