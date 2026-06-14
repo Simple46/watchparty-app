@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "../components/Navbar";
@@ -20,7 +20,8 @@ import {
   Film,
 } from "lucide-react";
 
-export default function HomePage() {
+// Inner component that uses useSearchParams
+function HomePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -474,5 +475,33 @@ export default function HomePage() {
         )}
       </div>
     </div>
+  );
+}
+
+// Loading fallback for Suspense
+function HomePageLoading() {
+  return (
+    <div className="min-h-screen bg-gray-950">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {[...Array(10)].map((_, i) => (
+            <div key={i} className="animate-pulse">
+              <div className="bg-gray-800 rounded-xl aspect-[2/3] mb-3" />
+              <div className="bg-gray-800 rounded h-4 w-3/4 mb-2" />
+              <div className="bg-gray-800 rounded h-3 w-1/2" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Main export wrapped in Suspense
+export default function HomePage() {
+  return (
+    <Suspense fallback={<HomePageLoading />}>
+      <HomePageContent />
+    </Suspense>
   );
 }
