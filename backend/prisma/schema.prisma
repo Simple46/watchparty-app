@@ -20,8 +20,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+   lastSeenAt DateTime?
+
   hostedRooms Room[]       @relation("HostedRooms")
   roomMembers RoomMember[]
+  conversationMembers ConversationMember[]
+  messages            Message[]
 
     sentFriendRequests     Friend[] @relation("UserFriends")
   receivedFriendRequests Friend[] @relation("FriendOf")
@@ -108,4 +112,47 @@ model Friend {
 
   // A user can only send one friend request to another user
   @@unique([userId, friendId])
+}
+
+// ─────────────────────────────────────────
+// CHAT SYSTEM
+// Supports both 1-on-1 and group conversations
+// through a single unified structure
+// ─────────────────────────────────────────
+model Conversation {
+  id        String   @id @default(uuid())
+  type      String   // "direct" | "group"
+  name      String?  // only used for groups
+  avatar    String?  // only used for groups
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  id             String    @id @default(uuid())
+  conversationId String
+  userId         String
+  isAdmin        Boolean   @default(false)
+  lastReadAt     DateTime?
+  joinedAt       DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
 }

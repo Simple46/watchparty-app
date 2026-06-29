@@ -327,12 +327,14 @@ export default function useRoom(roomCode, roomData) {
     });
   }, []);
 
-  const leaveRoom = useCallback(() => {
-    getSocket()?.emit("leave_room", {
-      roomCode: roomCodeRef.current,
-    });
-    hasJoined.current = false;
-  }, []);
+ const leaveRoom = useCallback(() => {
+  getSocket()?.emit("leave_room", {
+    roomCode: roomCodeRef.current,
+  });
+  hasJoined.current = false;
+  // Do NOT disconnect the socket here — it stays alive
+  // for presence and chat even after leaving the room
+}, []);
 
   return {
     members,

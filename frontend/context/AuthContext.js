@@ -7,6 +7,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { flushSync } from "react-dom";
 import api from "../lib/api";
+import { connectSocket, disconnectSocket } from "../lib/socket";
 
 // ─── STEP 1 — Create the context ───
 // This is like creating an empty container
@@ -39,6 +40,7 @@ export function AuthProvider({ children }) {
       flushSync(() => {
         setUser(JSON.parse(savedUser));
       });
+      connectSocket(token);
     }
 
     // Whether or not a saved session was found, loading is done
@@ -94,8 +96,8 @@ export function AuthProvider({ children }) {
 
       localStorage.setItem("watchparty_token", token);
       localStorage.setItem("watchparty_user", JSON.stringify(user));
-
       setUser(user);
+      connectSocket(response.data.token);
 
       // Redirect based on role
       // Admins go straight to the admin dashboard
@@ -119,6 +121,7 @@ export function AuthProvider({ children }) {
   // ─── LOGOUT ───
   const logout = () => {
     // Clear everything from localStorage
+    disconnectSocket();
     localStorage.removeItem("watchparty_token");
     localStorage.removeItem("watchparty_user");
 

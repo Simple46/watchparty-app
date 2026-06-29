@@ -1,40 +1,22 @@
 import { io } from "socket.io-client";
 
-// We store the socket instance outside of React
-// so it persists across component renders and
-// is never recreated unless we explicitly disconnect
 let socket = null;
 
+// Get or create the socket instance
+// This does NOT connect automatically anymore —
+// connection is controlled by AuthContext based on login state
 export const getSocket = () => {
-  // Only create the socket if one doesn't exist yet
   if (!socket) {
     socket = io(process.env.NEXT_PUBLIC_BACKEND_URL, {
-      // Don't connect automatically on page load
-      // We connect manually when the user enters a room
       autoConnect: false,
-
-      // Try WebSocket first, fall back to HTTP polling
-      // if WebSocket is not available (some corporate networks
-      // block WebSockets)
       transports: ["websocket", "polling"],
-
-      // Automatically try to reconnect if connection drops
       reconnection: true,
-
-      // Wait 1 second between reconnection attempts
       reconnectionDelay: 1000,
-
-      // Maximum wait between reconnections is 5 seconds
       reconnectionDelayMax: 5000,
-
-      // Try to reconnect up to 5 times before giving up
-      reconnectionAttempts: 5,
-
-      // 20 second connection timeout
+      reconnectionAttempts: Infinity,
       timeout: 20000,
     });
 
-    // Log connection events for debugging
     socket.on("connect", () => {
       console.log("🔌 Socket connected:", socket.id);
     });
@@ -46,20 +28,25 @@ export const getSocket = () => {
     socket.on("connect_error", (error) => {
       console.error("🔴 Socket connection error:", error.message);
     });
-
-    socket.on("reconnect", (attemptNumber) => {
-      console.log(`🔄 Socket reconnected after ${attemptNumber} attempt(s)`);
-    });
   }
 
   return socket;
 };
 
-// Call this when the user leaves the room
-// to properly clean up the connection
+// Called on login / app load with an active session
+// Attaches the JWT so the backend knows who's connecting
+export const connectSocket = (token) => {
+  const s = getSocket();
+  s.auth = { token };
+  if (!s.connected) {
+    s.connect();
+  }
+  return s;
+};
+
+// Called only on logout — NOT on leaving a room
 export const disconnectSocket = () => {
   if (socket) {
     socket.disconnect();
-    socket = null;
   }
 };
