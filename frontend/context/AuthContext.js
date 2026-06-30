@@ -40,7 +40,7 @@ export function AuthProvider({ children }) {
       flushSync(() => {
         setUser(JSON.parse(savedUser));
       });
-      connectSocket(token);
+      connectSocket(savedToken);
     }
 
     // Whether or not a saved session was found, loading is done
@@ -67,6 +67,7 @@ export function AuthProvider({ children }) {
 
       // Update state
       setUser(user);
+      connectSocket(response.data.token);
 
       // Redirect to homepage after successful registration
       router.push("/");

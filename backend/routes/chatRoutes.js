@@ -337,4 +337,77 @@ router.get("/unread-count", protect, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────
+// GET SINGLE CONVERSATION DETAILS
+// GET /api/chat/conversations/:id
+// ─────────────────────────────────────────
+router.get("/conversations/:id", protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    const member = await safeQuery((db) =>
+      db.conversationMember.findUnique({
+        where: { conversationId_userId: { conversationId: id, userId } },
+        include: {
+          conversation: {
+            include: {
+              members: {
+                include: {
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      avatar: true,
+                      lastSeenAt: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      })
+    );
+
+    if (!member) {
+      return res.status(403).json({
+        message: "Not a member of this conversation",
+      });
+    }
+
+    const conv = member.conversation;
+    const otherMembers = conv.members
+      .filter((m) => m.userId !== userId)
+      .map((m) => ({
+        id: m.user.id,
+        name: m.user.name,
+        avatar: m.user.avatar,
+        isOnline: isUserOnline(m.user.id),
+        lastSeenAt: m.user.lastSeenAt,
+      }));
+
+    res.status(200).json({
+      conversation: {
+        id: conv.id,
+        type: conv.type,
+        name:
+          conv.type === "group"
+            ? conv.name
+            : otherMembers[0]?.name || "Unknown",
+        avatar:
+          conv.type === "group"
+            ? conv.avatar
+            : otherMembers[0]?.avatar || null,
+        members: otherMembers,
+      },
+    });
+  } catch (error) {
+    console.error("Get conversation error:", error);
+    res.status(500).json({
+      message: "Failed to fetch conversation",
+    });
+  }
+});
+
 module.exports = router;

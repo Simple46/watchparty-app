@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
-
+import { useChat } from "../context/ChatContext";
 
 import {
   Radio,
@@ -13,7 +13,7 @@ import {
   User,
   LogOut,
   Settings,
-  Menu,
+  MessageCircle,
   X,
   ChevronDown,
 } from "lucide-react";
@@ -21,6 +21,7 @@ import {
 export default function Navbar() {
   const { user, logout, isAdmin } = useAuth();
   const router = useRouter();
+  const { unreadCount } = useChat();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -74,13 +75,13 @@ export default function Navbar() {
               />
               <input
                 type="text"
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search movies..."
-                className="w-full bg-gray-900 text-white
-                           placeholder-gray-500 border border-gray-800
-                           rounded-lg pl-10 pr-4 py-2.5 text-sm
-                           focus:outline-none focus:border-red-500
+                className="w-full bg-gray-900 border border-gray-800
+                           rounded-lg pl-10 pr-4 py-2 text-sm text-white
+                           placeholder-gray-500 focus:outline-none
+                           focus:border-red-600 focus:ring-1 focus:ring-red-600
                            transition"
               />
             </div>
@@ -88,10 +89,22 @@ export default function Navbar() {
 
           {/* ─── RIGHT SIDE ─── */}
           <div className="flex items-center gap-3">
+            {/* Messages icon */}
+            <Link href="/messages">
+              <button className="relative text-gray-400 hover:text-white transition p-2">
+                <MessageCircle className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-0.5 right-0.5 bg-red-600 text-white text-xs font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            </Link>
+
             {/* Mobile search icon */}
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="md:hidden text-gray-400 hover:text-white"
+              className="md:hidden text-gray-400 hover:text-white p-2"
             >
               <Search className="w-5 h-5" />
             </button>
@@ -249,14 +262,14 @@ export default function Navbar() {
                 />
                 <input
                   type="text"
+                  placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search movies..."
-                  autoFocus
-                  className="w-full bg-gray-900 text-white
-                             placeholder-gray-500 border border-gray-800
-                             rounded-lg pl-10 pr-4 py-2.5 text-sm
-                             focus:outline-none focus:border-red-500"
+                  className="w-full bg-gray-900 border border-gray-800
+                             rounded-lg pl-10 pr-4 py-2.5 text-sm text-white
+                             placeholder-gray-500 focus:outline-none
+                             focus:border-red-600 focus:ring-1 focus:ring-red-600
+                             transition"
                 />
               </div>
             </form>

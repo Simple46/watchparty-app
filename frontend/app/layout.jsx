@@ -1,4 +1,5 @@
 import { AuthProvider } from "../context/AuthContext";
+import { ChatProvider } from "../context/ChatContext";
 import "./globals.css";
 import { Inter } from "next/font/google";
 
@@ -39,7 +40,9 @@ export default function RootLayout({ children }) {
         inter.className contains the actual font-family CSS class
       */}
       <body className={`${inter.className} bg-gray-950 min-h-screen`}>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <ChatProvider>{children}</ChatProvider>
+        </AuthProvider>
       </body>
     </html>
   );
