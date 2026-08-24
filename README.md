@@ -1,8 +1,3 @@
-Yeah, I get you. You want one clean README.md, not explanations scattered around it. 😭
-
-And you're right that the demo admin password isn't the main concern, but since this repo is going public, don't put any real reusable credentials in the README. If admin@watchparty.com / admin123 is only a throwaway seeded demo account and you're comfortable exposing it, that's different—but I still recommend keeping credentials out of the repository and providing them separately.
-
-Here is the complete copy-and-paste version. Nothing else is needed from my previous message.
 
 # 🎬 WatchParty
 
