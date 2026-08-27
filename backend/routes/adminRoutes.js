@@ -8,6 +8,7 @@ const {
   updateMovie,
   deleteMovie,
   getAllRooms,
+  closeRoom,
 } = require("../controllers/adminController");
 
 const { protect, adminOnly } = require("../middleware/authMiddleware");
@@ -24,5 +25,7 @@ router.get("/movies/:id", protect, adminOnly, getMovieById);
 router.put("/movies/:id", protect, adminOnly, updateMovie);
 router.delete("/movies/:id", protect, adminOnly, deleteMovie);
 router.get("/rooms", protect, adminOnly, getAllRooms);
+// POST /api/admin/rooms/:id/close
+router.post("/rooms/:id/close", protect, adminOnly, closeRoom);
 
 module.exports = router;

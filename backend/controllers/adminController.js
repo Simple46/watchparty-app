@@ -469,6 +469,41 @@ const getAllRooms = async (req, res) => {
   }
 };
 
+const closeRoom = async (req, res) => {
+  try {
+    const room = await safeQuery((db) =>
+      db.room.findUnique({
+        where: { id: req.params.id },
+        include: {
+          movie: { select: { title: true } },
+        },
+      }),
+    );
+
+    if (!room) {
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    if (!room.isActive) {
+      return res.status(400).json({ message: "Room is already closed" });
+    }
+
+    await safeQuery((db) =>
+      db.room.update({
+        where: { id: req.params.id },
+        data: { isActive: false },
+      }),
+    );
+
+    console.log(`🔒 Admin closed room: ${room.roomCode}`);
+
+    res.status(200).json({ message: "Room closed successfully" });
+  } catch (error) {
+    console.error("Close room error:", error);
+    res.status(500).json({ message: "Failed to close room" });
+  }
+};
+
 module.exports = {
   getCloudinarySignature,
   saveMovie,
@@ -479,4 +514,5 @@ module.exports = {
   updateMovie,
   deleteMovie,
   getAllRooms,
+  closeRoom,
 };

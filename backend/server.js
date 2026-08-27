@@ -192,3 +192,57 @@ if (process.env.NODE_ENV === "production") {
     console.log("💓 Keep-alive ping scheduled every 14 minutes ✅");
   }, 60 * 1000);
 }
+
+
+// ─── AUTO-CLOSE STALE ROOMS ───
+// Runs every hour and closes any room active for more than 24 hours
+// A room staying open that long is almost certainly abandoned
+const startAutoCloseScheduler = () => {
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+  const ONE_HOUR = 60 * 60 * 1000;
+
+  const closeStaleRooms = async () => {
+    try {
+      const cutoff = new Date(Date.now() - TWENTY_FOUR_HOURS);
+
+      const staleRooms = await safeQuery((db) =>
+        db.room.findMany({
+          where: {
+            isActive: true,
+            createdAt: { lt: cutoff },
+          },
+          select: { id: true, roomCode: true },
+        })
+      );
+
+      if (staleRooms.length === 0) return;
+
+      await safeQuery((db) =>
+        db.room.updateMany({
+          where: {
+            isActive: true,
+            createdAt: { lt: cutoff },
+          },
+          data: { isActive: false },
+        })
+      );
+
+      console.log(
+        `🕐 Auto-closed ${staleRooms.length} stale room(s):`,
+        staleRooms.map((r) => r.roomCode).join(", ")
+      );
+    } catch (err) {
+      console.error("Auto-close scheduler error:", err.message);
+    }
+  };
+
+  // Run once immediately on startup to catch any rooms
+  // that were left open from a previous server session
+  closeStaleRooms();
+
+  // Then run every hour
+  setInterval(closeStaleRooms, ONE_HOUR);
+  console.log("🕐 Auto-close scheduler started");
+};
+
+startAutoCloseScheduler();
