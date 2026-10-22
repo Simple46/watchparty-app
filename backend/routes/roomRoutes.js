@@ -284,4 +284,96 @@ router.post("/:roomCode/leave", protect, async (req, res) => {
     res.status(200).json({ message: "Left room" });
   }
 });
+
+// GET /api/rooms/ice-config
+// Returns STUN + TURN server config for WebRTC
+router.get("/ice-config", protect, (req, res) => {
+  res.status(200).json({
+    iceServers: [
+      // Google free STUN — works for most home networks
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      // Metered free TURN — covers strict NATs
+      {
+        urls: process.env.METERED_TURN_URL,
+        username: process.env.METERED_TURN_USERNAME,
+        credential: process.env.METERED_TURN_CREDENTIAL,
+      },
+      {
+        urls: process.env.METERED_TURNS_URL,
+        username: process.env.METERED_TURN_USERNAME,
+        credential: process.env.METERED_TURN_CREDENTIAL,
+      },
+    ],
+  });
+});
+
+
+// POST /api/rooms/create-p2p
+// Creates a P2P streaming room with no movie attached
+router.post("/create-p2p", protect, async (req, res) => {
+  try {
+    // Generate unique room code
+    const generateRoomCode = () => {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let code = "";
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    };
+
+    let roomCode;
+    let isUnique = false;
+    while (!isUnique) {
+      roomCode = generateRoomCode();
+      const existing = await safeQuery((db) =>
+        db.room.findUnique({ where: { roomCode } })
+      );
+      if (!existing) isUnique = true;
+    }
+
+    // Create a placeholder movie record for the P2P room
+    const placeholderMovie = await safeQuery((db) =>
+      db.movie.create({
+        data: {
+          title: "P2P Stream",
+          videoUrl: "",
+          cloudinaryId: `p2p_${roomCode}`,
+          source: "p2p",
+        },
+      })
+    );
+
+    const room = await safeQuery((db) =>
+      db.room.create({
+        data: {
+          roomCode,
+          movieId: placeholderMovie.id,
+          hostId: req.user.userId,
+          isActive: true,
+        },
+      })
+    );
+
+    await safeQuery((db) =>
+      db.roomMember.create({
+        data: {
+          roomId: room.id,
+          userId: req.user.userId,
+        },
+      })
+    );
+
+    res.status(201).json({
+      message: "P2P room created",
+      roomCode: room.roomCode,
+    });
+  } catch (error) {
+    console.error("Create P2P room error:", error);
+    res.status(500).json({
+      message: "Failed to create room: " + error.message,
+    });
+  }
+});
 module.exports = router;

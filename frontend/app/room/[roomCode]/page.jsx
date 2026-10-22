@@ -16,6 +16,10 @@ import useRoom from "../../../hooks/useRoom";
 import api from "../../../lib/api";
 import { disconnectSocket } from "../../../lib/socket";
 
+import P2PHostPlayer from "../../../components/room/P2PHostPlayer";
+import P2PViewerPlayer from "../../../components/room/P2PViewerPlayer";
+import { useSearchParams } from "next/navigation";
+
 import {
   ArrowLeft,
   Copy,
@@ -49,6 +53,10 @@ function WatchRoomContent() {
 
   const timeoutRef = useRef(null);
   const hasLeftRef = useRef(false);
+
+  const searchParams = useSearchParams();
+  const isP2PMode =
+    searchParams.get("mode") === "p2p" || roomData?.movie?.source === "p2p";
 
   // ─────────────────────────────────────
   // FETCH ROOM
@@ -298,6 +306,7 @@ function WatchRoomContent() {
       {/* ───────────────── MAIN CONTENT ───────────────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* ───────────────── VIDEO AREA ───────────────── */}
+
         <div
           className={`
             flex-1 items-center justify-center
@@ -306,7 +315,13 @@ function WatchRoomContent() {
             lg:flex
           `}
         >
-          {roomData?.movie?.videoUrl ? (
+          {isP2PMode ? (
+            isHost ? (
+              <P2PHostPlayer roomCode={roomCode} />
+            ) : (
+              <P2PViewerPlayer roomCode={roomCode} />
+            )
+          ) : roomData?.movie?.videoUrl ? (
             <div className="w-full max-w-5xl">
               {roomData.movie.videoUrl.includes("vidsrc") ||
               roomData.movie.videoUrl.includes("embed") ? (

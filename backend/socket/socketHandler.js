@@ -306,6 +306,76 @@ const socketHandler = (io) => {
         }
       }
     });
+
+    // ═══════════════════════════════════════
+    // WEBRTC P2P SIGNALING EVENTS
+    // The server only relays handshake messages
+    // — zero video data ever touches this server
+    // ═══════════════════════════════════════
+
+    // Host signals it has a stream ready in a room
+    socket.on("p2p:host_ready", ({ roomCode }) => {
+      console.log(`📡 P2P host ready in room: ${roomCode}`);
+      // Join the p2p room channel
+      socket.join(`p2p:${roomCode}`);
+      // Store that this socket is the P2P host
+      socket.p2pRoom = roomCode;
+      socket.isP2PHost = true;
+      // Tell any viewers already waiting that host is ready
+      socket.to(`p2p:${roomCode}`).emit("p2p:host_ready");
+    });
+
+    // Viewer joins and wants to connect to host
+    socket.on("p2p:viewer_join", ({ roomCode }) => {
+      console.log(`👤 P2P viewer joined room: ${roomCode}`);
+      socket.join(`p2p:${roomCode}`);
+      socket.p2pRoom = roomCode;
+      socket.isP2PHost = false;
+      // Tell host a new viewer wants to connect
+      // Host will initiate offer to this specific socket
+      socket.to(`p2p:${roomCode}`).emit("p2p:viewer_joined", {
+        viewerSocketId: socket.id,
+      });
+    });
+
+    // Host sends WebRTC offer to a specific viewer
+    socket.on("p2p:offer", ({ viewerSocketId, offer }) => {
+      console.log(`📤 Offer from host to viewer: ${viewerSocketId}`);
+      io.to(viewerSocketId).emit("p2p:offer", {
+        offer,
+        hostSocketId: socket.id,
+      });
+    });
+
+    // Viewer sends WebRTC answer back to host
+    socket.on("p2p:answer", ({ hostSocketId, answer }) => {
+      console.log(`📥 Answer from viewer to host`);
+      io.to(hostSocketId).emit("p2p:answer", {
+        answer,
+        viewerSocketId: socket.id,
+      });
+    });
+
+    // ICE candidate relay — both directions
+    socket.on("p2p:ice_candidate", ({ targetSocketId, candidate }) => {
+      io.to(targetSocketId).emit("p2p:ice_candidate", {
+        candidate,
+        fromSocketId: socket.id,
+      });
+    });
+
+    // Host pauses — broadcast to all viewers in this p2p room
+    socket.on("p2p:play", ({ roomCode, currentTime }) => {
+      socket.to(`p2p:${roomCode}`).emit("p2p:play", { currentTime });
+    });
+
+    socket.on("p2p:pause", ({ roomCode, currentTime }) => {
+      socket.to(`p2p:${roomCode}`).emit("p2p:pause", { currentTime });
+    });
+
+    socket.on("p2p:seek", ({ roomCode, currentTime }) => {
+      socket.to(`p2p:${roomCode}`).emit("p2p:seek", { currentTime });
+    });
   });
 };
 
@@ -384,6 +454,8 @@ const getMembersList = (roomCode) => {
     isHost: socketId === room.hostSocketId,
   }));
 };
+
+
 
 // ─────────────────────────────────────────
 // HELPER — Format Time for Logging

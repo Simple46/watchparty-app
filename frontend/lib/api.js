@@ -3,7 +3,8 @@ import axios from "axios";
 // Create one axios instance with your backend base URL pre-set
 // All requests made through this instance automatically go to your backend
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_BACKEND_URL,
+  baseURL:
+    process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -43,7 +44,12 @@ api.interceptors.response.use(
 
   // If the response is an error
   (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = error.config?.url || "";
+    const isAuthAttempt = /\/api\/auth\/(login|register)(?:[/?]|$)/i.test(
+      requestUrl,
+    );
+
+    if (error.response?.status === 401 && !isAuthAttempt) {
       // Token expired or invalid — clean up and force re-login
       if (typeof window !== "undefined") {
         localStorage.removeItem("watchparty_token");

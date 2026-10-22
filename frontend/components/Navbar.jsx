@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   ChevronDown,
+  Wifi,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -165,6 +166,16 @@ export default function Navbar() {
                         >
                           <User className="w-4 h-4" />
                           My Profile
+                        </Link>
+
+                        <Link href="/stream/new">
+                          <button
+                            className="flex items-center gap-2 text-gray-400
+                     hover:text-white transition text-sm"
+                          >
+                            <Wifi className="w-4 h-4" />
+                            <span className="hidden sm:block">Stream</span>
+                          </button>
                         </Link>
 
                         <Link href="/football">

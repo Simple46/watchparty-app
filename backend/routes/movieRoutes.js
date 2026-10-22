@@ -6,29 +6,29 @@ router.get("/", async (req, res) => {
     const movies = await safeQuery((db) =>
       db.movie.findMany({
         orderBy: { createdAt: "desc" },
-        include: {
-          _count: { select: { rooms: true } },
-        },
       }),
     );
 
-    // Count active rooms per movie
-    const moviesWithData = await Promise.all(
-      movies.map(async (movie) => {
-        const activeRoomCount = await safeQuery((db) =>
-          db.room.count({
+    const activeRoomCounts = movies.length
+      ? await safeQuery((db) =>
+          db.room.groupBy({
+            by: ["movieId"],
             where: {
-              movieId: movie.id,
+              movieId: { in: movies.map((movie) => movie.id) },
               isActive: true,
             },
+            _count: { _all: true },
           }),
-        );
-        return {
-          ...movie,
-          _count: { rooms: activeRoomCount },
-        };
-      }),
+        )
+      : [];
+
+    const roomCountByMovieId = new Map(
+      activeRoomCounts.map(({ movieId, _count }) => [movieId, _count._all]),
     );
+    const moviesWithData = movies.map((movie) => ({
+      ...movie,
+      _count: { rooms: roomCountByMovieId.get(movie.id) || 0 },
+    }));
 
     // Extract all unique genres for the filter UI
     const allGenres = new Set();

@@ -483,8 +483,7 @@ frontend/.env.local
 
 Example:
 
-NEXT_PUBLIC_API_URL="http://localhost:5000"
-NEXT_PUBLIC_SOCKET_URL="http://localhost:5000"
+NEXT_PUBLIC_BACKEND_URL="http://localhost:5000"
 
 11. Start Frontend
 
@@ -513,8 +512,7 @@ API_FOOTBALL_KEY=
 
 Frontend
 
-NEXT_PUBLIC_API_URL=
-NEXT_PUBLIC_SOCKET_URL=
+NEXT_PUBLIC_BACKEND_URL=
 
 Never commit .env or .env.local files containing real credentials.
 
