@@ -22,66 +22,78 @@ export default function useWebRTC({ roomCode, isHost }) {
 
   // ICE server config fetched from backend
   const iceConfig = useRef(null);
+  const iceConfigPromise = useRef(null);
 
-  // ─── Fetch ICE config from backend on mount ───
-  useEffect(() => {
-    const fetchIceConfig = async () => {
-      try {
-        const res = await api.get("/api/rooms/ice-config");
-        iceConfig.current = { iceServers: res.data.iceServers };
-        console.log("✅ ICE config loaded");
-      } catch (err) {
-        console.error("Failed to fetch ICE config:", err);
-        // Fallback to Google STUN only
-        iceConfig.current = {
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-        };
-      }
-    };
-    fetchIceConfig();
-  }, []);
-
-  // ─── Create a peer connection to a specific viewer ───
-  const createPeerConnection = useCallback((viewerSocketId) => {
-    const socket = getSocket();
-    const pc = new RTCPeerConnection(iceConfig.current || { iceServers: [] });
-
-    // When host gets ICE candidates, relay to specific viewer
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("p2p:ice_candidate", {
-          targetSocketId: viewerSocketId,
-          candidate: event.candidate,
+  const loadIceConfig = useCallback(() => {
+    if (!iceConfigPromise.current) {
+      iceConfigPromise.current = api
+        .get("/api/rooms/ice-config")
+        .then((res) => {
+          iceConfig.current = { iceServers: res.data.iceServers };
+          console.log("✅ ICE config loaded");
+        })
+        .catch((err) => {
+          console.error("Failed to fetch ICE config:", err);
+          iceConfig.current = {
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          };
         });
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log(`Connection state (${viewerSocketId}):`, pc.connectionState);
-      if (pc.connectionState === "connected") {
-        setViewerCount((prev) => prev + 1);
-        setConnectionState("connected");
-      }
-      if (
-        pc.connectionState === "disconnected" ||
-        pc.connectionState === "failed" ||
-        pc.connectionState === "closed"
-      ) {
-        setViewerCount((prev) => Math.max(0, prev - 1));
-        delete peerConnections.current[viewerSocketId];
-      }
-    };
-
-    // Add all local tracks to this peer connection
-    if (localStream.current) {
-      localStream.current.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream.current);
-      });
     }
 
-    peerConnections.current[viewerSocketId] = pc;
-    return pc;
+    return iceConfigPromise.current.then(() => iceConfig.current);
   }, []);
+
+  useEffect(() => {
+    loadIceConfig();
+  }, [loadIceConfig]);
+
+  // ─── Create a peer connection to a specific viewer ───
+  const createPeerConnection = useCallback(
+    async (viewerSocketId) => {
+      const socket = getSocket();
+      const pc = new RTCPeerConnection(await loadIceConfig());
+
+      // When host gets ICE candidates, relay to specific viewer
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("p2p:ice_candidate", {
+            targetSocketId: viewerSocketId,
+            candidate: event.candidate,
+          });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log(
+          `Connection state (${viewerSocketId}):`,
+          pc.connectionState,
+        );
+        if (pc.connectionState === "connected") {
+          setViewerCount((prev) => prev + 1);
+          setConnectionState("connected");
+        }
+        if (
+          pc.connectionState === "disconnected" ||
+          pc.connectionState === "failed" ||
+          pc.connectionState === "closed"
+        ) {
+          setViewerCount((prev) => Math.max(0, prev - 1));
+          delete peerConnections.current[viewerSocketId];
+        }
+      };
+
+      // Add all local tracks to this peer connection
+      if (localStream.current) {
+        localStream.current.getTracks().forEach((track) => {
+          pc.addTrack(track, localStream.current);
+        });
+      }
+
+      peerConnections.current[viewerSocketId] = pc;
+      return pc;
+    },
+    [loadIceConfig],
+  );
 
   // ─── HOST: Start streaming from a local file ───
   const startHostStream = useCallback(
@@ -133,7 +145,7 @@ export default function useWebRTC({ roomCode, isHost }) {
   const makeOffer = useCallback(
     async (viewerSocketId) => {
       const socket = getSocket();
-      const pc = createPeerConnection(viewerSocketId);
+      const pc = await createPeerConnection(viewerSocketId);
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -198,16 +210,14 @@ export default function useWebRTC({ roomCode, isHost }) {
     } else {
       // Viewer listens for offer from host
       const onHostReady = () => {
-        // Host just became ready — already told server we joined
-        // Host will send an offer shortly
         setConnectionState("connecting");
+        // The viewer may have joined before the host started its stream.
+        joinAsViewer();
       };
 
       const onOffer = async ({ offer, hostSocketId }) => {
         const socket = getSocket();
-        const pc = new RTCPeerConnection(
-          iceConfig.current || { iceServers: [] },
-        );
+        const pc = new RTCPeerConnection(await loadIceConfig());
 
         // When viewer gets ICE candidates, relay to host
         pc.onicecandidate = (event) => {
@@ -279,7 +289,7 @@ export default function useWebRTC({ roomCode, isHost }) {
         socket.off("p2p:ice_candidate", onIceCandidate);
       };
     }
-  }, [roomCode, isHost, makeOffer, joinAsViewer]);
+  }, [roomCode, isHost, makeOffer, joinAsViewer, loadIceConfig]);
 
   // ─── CLEANUP on unmount ───
   useEffect(() => {

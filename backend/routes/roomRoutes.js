@@ -103,6 +103,34 @@ router.post("/create", protect, async (req, res) => {
   }
 });
 
+// GET /api/rooms/ice-config
+// Returns STUN + TURN server config for WebRTC
+router.get("/ice-config", protect, (req, res) => {
+  const iceServers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+
+  for (const urls of [
+    process.env.METERED_TURN_URL,
+    process.env.METERED_TURNS_URL,
+  ]) {
+    if (
+      urls &&
+      process.env.METERED_TURN_USERNAME &&
+      process.env.METERED_TURN_CREDENTIAL
+    ) {
+      iceServers.push({
+        urls,
+        username: process.env.METERED_TURN_USERNAME,
+        credential: process.env.METERED_TURN_CREDENTIAL,
+      });
+    }
+  }
+
+  res.status(200).json({ iceServers });
+});
+
 // ─────────────────────────────────────────
 // GET ROOM BY CODE
 // GET /api/rooms/:roomCode
@@ -124,6 +152,7 @@ router.get("/:roomCode", protect, async (req, res) => {
               videoUrl: true,
               thumbnail: true,
               duration: true,
+              source: true,
             },
           },
           host: {
@@ -284,30 +313,6 @@ router.post("/:roomCode/leave", protect, async (req, res) => {
     res.status(200).json({ message: "Left room" });
   }
 });
-
-// GET /api/rooms/ice-config
-// Returns STUN + TURN server config for WebRTC
-router.get("/ice-config", protect, (req, res) => {
-  res.status(200).json({
-    iceServers: [
-      // Google free STUN — works for most home networks
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      // Metered free TURN — covers strict NATs
-      {
-        urls: process.env.METERED_TURN_URL,
-        username: process.env.METERED_TURN_USERNAME,
-        credential: process.env.METERED_TURN_CREDENTIAL,
-      },
-      {
-        urls: process.env.METERED_TURNS_URL,
-        username: process.env.METERED_TURN_USERNAME,
-        credential: process.env.METERED_TURN_CREDENTIAL,
-      },
-    ],
-  });
-});
-
 
 // POST /api/rooms/create-p2p
 // Creates a P2P streaming room with no movie attached
