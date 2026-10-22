@@ -364,6 +364,59 @@ const socketHandler = (io) => {
       });
     });
 
+    socket.on("p2p:subtitle_request", ({ roomCode }) => {
+      if (socket.p2pRoom !== roomCode || socket.isP2PHost) return;
+      socket.to(`p2p:${roomCode}`).emit("p2p:subtitle_request", {
+        viewerSocketId: socket.id,
+      });
+    });
+
+    socket.on(
+      "p2p:subtitle",
+      ({ roomCode, subtitleContent, viewerSocketId }) => {
+        if (
+          socket.p2pRoom !== roomCode ||
+          !socket.isP2PHost ||
+          typeof subtitleContent !== "string" ||
+          subtitleContent.length > 512 * 1024
+        ) {
+          return;
+        }
+
+        if (viewerSocketId) {
+          const viewer = io.sockets.sockets.get(viewerSocketId);
+          if (!viewer?.rooms.has(`p2p:${roomCode}`)) return;
+          viewer.emit("p2p:subtitle", { subtitleContent });
+          return;
+        }
+
+        socket.to(`p2p:${roomCode}`).emit("p2p:subtitle", {
+          subtitleContent,
+        });
+      },
+    );
+
+    socket.on("p2p:control_request", ({ roomCode, type, currentTime }) => {
+      if (
+        socket.p2pRoom !== roomCode ||
+        socket.isP2PHost ||
+        !["play", "pause", "seek"].includes(type)
+      ) {
+        return;
+      }
+      if (
+        type === "seek" &&
+        (!Number.isFinite(currentTime) || currentTime < 0)
+      ) {
+        return;
+      }
+
+      socket.to(`p2p:${roomCode}`).emit("p2p:control_request", {
+        type,
+        currentTime,
+      });
+    });
+
     // Host pauses — broadcast to all viewers in this p2p room
     socket.on("p2p:play", ({ roomCode, currentTime }) => {
       socket.to(`p2p:${roomCode}`).emit("p2p:play", { currentTime });

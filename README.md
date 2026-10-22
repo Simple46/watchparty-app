@@ -143,6 +143,10 @@ Host
 
 The host controls playback for supported video sources, while Socket.io broadcasts the playback state to connected members.
 
+In P2P rooms, any viewer can request play, pause, or seek; the host applies the command so playback stays synchronized. The host can change the movie from the player without leaving the room, and can load `.srt` or `.vtt` subtitles, which are shared with viewers in the room.
+
+P2P player shortcuts: Left/Right seek 10 seconds (Shift + Left/Right seeks 30 seconds), Space toggles playback, Up/Down adjusts volume, `M` mutes, and `F` toggles fullscreen.
+
 
 ---
 

@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -19,6 +18,8 @@ export default function useWebRTC({ roomCode, isHost }) {
 
   // The local media stream from the host's file (host only)
   const localStream = useRef(null);
+  const hostVideoElement = useRef(null);
+  const hostVideoUrl = useRef(null);
 
   // ICE server config fetched from backend
   const iceConfig = useRef(null);
@@ -103,26 +104,75 @@ export default function useWebRTC({ roomCode, isHost }) {
       setError(null);
 
       try {
+        const videoUrl = URL.createObjectURL(file);
         // Create a hidden video element to play the file
         // then capture its stream — this is the key trick
         const videoEl = document.createElement("video");
-        videoEl.src = URL.createObjectURL(file);
+        videoEl.src = videoUrl;
         videoEl.muted = true; // muted so it doesn't play audio twice
         videoEl.playsInline = true;
 
         await new Promise((resolve, reject) => {
-          videoEl.onloadedmetadata = resolve;
-          videoEl.onerror = reject;
-          setTimeout(resolve, 3000); // fallback
+          const timeout = setTimeout(resolve, 3000);
+          videoEl.onloadedmetadata = () => {
+            clearTimeout(timeout);
+            resolve();
+          };
+          videoEl.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error("The selected file could not be opened."));
+          };
         });
 
         // captureStream() gets a live MediaStream from the video element
-        const capturedStream = videoEl.captureStream
-          ? videoEl.captureStream()
-          : videoEl.mozCaptureStream(); // Firefox
+        const capture = videoEl.captureStream || videoEl.mozCaptureStream;
+        if (!capture) {
+          throw new Error("This browser does not support video streaming.");
+        }
+        const capturedStream = capture.call(videoEl);
+
+        const previousStream = localStream.current;
+        const previousVideo = hostVideoElement.current;
+        const previousVideoUrl = hostVideoUrl.current;
 
         localStream.current = capturedStream;
+        hostVideoElement.current = videoEl;
+        hostVideoUrl.current = videoUrl;
         setStream(capturedStream);
+
+        await Promise.all(
+          Object.values(peerConnections.current).map(async (pc) => {
+            const senders = pc.getSenders();
+            const nextTracks = new Map(
+              capturedStream.getTracks().map((track) => [track.kind, track]),
+            );
+
+            await Promise.all(
+              senders.map((sender) => {
+                const track = sender.track
+                  ? nextTracks.get(sender.track.kind)
+                  : null;
+                if (track) {
+                  nextTracks.delete(track.kind);
+                  return sender.replaceTrack(track);
+                }
+                return sender.replaceTrack(null);
+              }),
+            );
+
+            for (const track of nextTracks.values()) {
+              pc.addTrack(track, capturedStream);
+            }
+          }),
+        );
+
+        previousStream?.getTracks().forEach((track) => track.stop());
+        if (previousVideo && previousVideo !== videoEl) {
+          previousVideo.pause();
+          previousVideo.removeAttribute("src");
+          previousVideo.load();
+        }
+        if (previousVideoUrl) URL.revokeObjectURL(previousVideoUrl);
 
         // Signal to all viewers that host is ready
         socket.emit("p2p:host_ready", { roomCode });
@@ -132,8 +182,8 @@ export default function useWebRTC({ roomCode, isHost }) {
       } catch (err) {
         console.error("Failed to start host stream:", err);
         setError(
-          "Failed to capture video stream from file. " +
-            "Try a different browser (Chrome works best).",
+          err.message ||
+            "Failed to capture video stream from file. Try a different browser (Chrome works best).",
         );
         setConnectionState("failed");
       }
@@ -304,6 +354,16 @@ export default function useWebRTC({ roomCode, isHost }) {
       if (localStream.current) {
         localStream.current.getTracks().forEach((t) => t.stop());
         localStream.current = null;
+      }
+      if (hostVideoElement.current) {
+        hostVideoElement.current.pause();
+        hostVideoElement.current.removeAttribute("src");
+        hostVideoElement.current.load();
+        hostVideoElement.current = null;
+      }
+      if (hostVideoUrl.current) {
+        URL.revokeObjectURL(hostVideoUrl.current);
+        hostVideoUrl.current = null;
       }
     };
   }, []);
