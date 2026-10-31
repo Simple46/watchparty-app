@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import Navbar from "../components/Navbar";
 import MovieCard from "../components/MovieCard";
 import api from "../lib/api";
@@ -13,6 +14,8 @@ import {
   ArrowDownAZ,
   Clock,
   Flame,
+  Wifi,
+  Users,
   X,
   Film,
   ChevronLeft,
@@ -32,6 +35,7 @@ function HomePageContent() {
   const router = useRouter();
 
   const [movies, setMovies] = useState([]);
+  const [activeStreams, setActiveStreams] = useState([]);
   const [genres, setGenres] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,6 +67,29 @@ function HomePageContent() {
     };
 
     fetchMovies();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchActiveStreams = async () => {
+      try {
+        const response = await api.get("/api/rooms/active-p2p");
+        if (isMounted) {
+          setActiveStreams(response.data.rooms || []);
+        }
+      } catch (err) {
+        console.error("Fetch active streams error:", err);
+      }
+    };
+
+    fetchActiveStreams();
+    const interval = setInterval(fetchActiveStreams, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Sync search query from navbar URL param
@@ -197,6 +224,62 @@ function HomePageContent() {
               your friends.
             </p>
           </div>
+        )}
+
+        {activeStreams.length > 0 && (
+          <section className="mb-8 sm:mb-10" aria-labelledby="live-streams-title">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                  </span>
+                  <h2
+                    id="live-streams-title"
+                    className="text-lg font-bold text-white sm:text-xl"
+                  >
+                    Live streams
+                  </h2>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                  Join someone watching from their device
+                </p>
+              </div>
+              <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-300">
+                {activeStreams.length} live
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {activeStreams.map((stream) => (
+                <Link
+                  key={stream.roomCode}
+                  href={`/room/${stream.roomCode}?mode=p2p`}
+                  className="group flex items-center gap-4 rounded-xl border border-gray-800 bg-gray-900 p-4 transition hover:-translate-y-0.5 hover:border-red-500/40 hover:bg-gray-900/80 hover:shadow-lg hover:shadow-red-950/20"
+                >
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-red-500/20 bg-red-600/10 transition group-hover:bg-red-600/20">
+                    <Wifi className="h-5 w-5 text-red-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white transition group-hover:text-red-200">
+                      {stream.host?.name || "Community stream"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Streaming from their device
+                    </p>
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                      <Users className="h-3.5 w-3.5" />
+                      {stream._count.members} watching
+                    </div>
+                  </div>
+                  <span className="flex-shrink-0 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-red-500">
+                    Join
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Filter Bar */}

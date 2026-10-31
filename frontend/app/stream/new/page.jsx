@@ -16,9 +16,6 @@ function NewStreamContent() {
   const createP2PRoom = async () => {
     setCreating(true);
     try {
-      // Reuse the existing room creation API
-      // We create a "room" with a placeholder movie
-      // The actual video comes from the host's device via WebRTC
       const res = await api.post("/api/rooms/create-p2p");
       router.push(`/room/${res.data.roomCode}?mode=p2p`);
     } catch (err) {

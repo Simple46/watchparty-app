@@ -131,6 +131,34 @@ router.get("/ice-config", protect, (req, res) => {
   res.status(200).json({ iceServers });
 });
 
+// GET /api/rooms/active-p2p
+// Lists active peer-to-peer rooms so viewers can join a live stream.
+router.get("/active-p2p", async (_req, res) => {
+  try {
+    const rooms = await safeQuery((db) =>
+      db.room.findMany({
+        where: {
+          isActive: true,
+          movieId: null,
+          members: { some: {} },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          roomCode: true,
+          createdAt: true,
+          host: { select: { name: true } },
+          _count: { select: { members: true } },
+        },
+      }),
+    );
+
+    res.status(200).json({ rooms });
+  } catch (error) {
+    console.error("Get active P2P rooms error:", error);
+    res.status(500).json({ message: "Failed to fetch active streams" });
+  }
+});
+
 // ─────────────────────────────────────────
 // GET ROOM BY CODE
 // GET /api/rooms/:roomCode
@@ -243,6 +271,14 @@ router.post("/:roomCode/close", protect, async (req, res) => {
       }),
     );
 
+    if (!room.movieId) {
+      await safeQuery((db) =>
+        db.roomMember.deleteMany({
+          where: { roomId: room.id },
+        }),
+      );
+    }
+
     res.status(200).json({ message: "Room closed successfully" });
   } catch (error) {
     console.error("Close room error:", error);
@@ -271,16 +307,35 @@ router.post("/:roomCode/leave", protect, async (req, res) => {
     }
 
     // Remove this user from room members
-    await safeQuery((db) =>
-      db.roomMember.deleteMany({
+    await safeQuery((db) => {
+      return db.roomMember.deleteMany({
         where: {
           roomId: room.id,
           userId: req.user.userId,
         },
-      }),
-    ).catch(() => {
-      // Ignore if member record doesn't exist
+      });
     });
+
+    const isP2PHostLeaving = !room.movieId && room.hostId === req.user.userId;
+
+    if (isP2PHostLeaving) {
+      await safeQuery((db) =>
+        db.room.update({
+          where: { id: room.id },
+          data: { isActive: false },
+        }),
+      );
+      await safeQuery((db) =>
+        db.roomMember.deleteMany({
+          where: { roomId: room.id },
+        }),
+      );
+
+      return res.status(200).json({
+        message: "P2P stream ended",
+        remainingMembers: 0,
+      });
+    }
 
     // Count remaining members AFTER deletion
     const remainingMembers = await safeQuery((db) =>
@@ -310,7 +365,7 @@ router.post("/:roomCode/leave", protect, async (req, res) => {
     });
   } catch (error) {
     console.error("Leave room error:", error);
-    res.status(200).json({ message: "Left room" });
+    res.status(500).json({ message: "Failed to leave room" });
   }
 });
 
@@ -318,7 +373,6 @@ router.post("/:roomCode/leave", protect, async (req, res) => {
 // Creates a P2P streaming room with no movie attached
 router.post("/create-p2p", protect, async (req, res) => {
   try {
-    // Generate unique room code
     const generateRoomCode = () => {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let code = "";
@@ -330,12 +384,16 @@ router.post("/create-p2p", protect, async (req, res) => {
 
     let roomCode;
     let isUnique = false;
+
     while (!isUnique) {
       roomCode = generateRoomCode();
       const existing = await safeQuery((db) =>
-        db.room.findUnique({ where: { roomCode } })
+        db.room.findUnique({ where: { roomCode } }),
       );
-      if (!existing) isUnique = true;
+
+      if (!existing) {
+        isUnique = true;
+      }
     }
 
     const room = await safeQuery((db) =>
@@ -346,7 +404,7 @@ router.post("/create-p2p", protect, async (req, res) => {
           hostId: req.user.userId,
           isActive: true,
         },
-      })
+      }),
     );
 
     await safeQuery((db) =>
@@ -355,7 +413,7 @@ router.post("/create-p2p", protect, async (req, res) => {
           roomId: room.id,
           userId: req.user.userId,
         },
-      })
+      }),
     );
 
     res.status(201).json({
@@ -369,4 +427,5 @@ router.post("/create-p2p", protect, async (req, res) => {
     });
   }
 });
+
 module.exports = router;
