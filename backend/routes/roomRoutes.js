@@ -140,11 +140,13 @@ router.get("/active-p2p", async (_req, res) => {
         where: {
           isActive: true,
           movieId: null,
+          streamTitle: { not: null },
           members: { some: {} },
         },
         orderBy: { createdAt: "desc" },
         select: {
           roomCode: true,
+          streamTitle: true,
           createdAt: true,
           host: { select: { name: true } },
           _count: { select: { members: true } },
@@ -156,6 +158,50 @@ router.get("/active-p2p", async (_req, res) => {
   } catch (error) {
     console.error("Get active P2P rooms error:", error);
     res.status(500).json({ message: "Failed to fetch active streams" });
+  }
+});
+
+// PATCH /api/rooms/:roomCode/stream-title
+// Updates the title shown in the public live-stream list.
+router.patch("/:roomCode/stream-title", protect, async (req, res) => {
+  try {
+    const streamTitle =
+      typeof req.body.title === "string" ? req.body.title.trim() : "";
+
+    if (!streamTitle || streamTitle.length > 120) {
+      return res.status(400).json({
+        message: "Stream title must be between 1 and 120 characters",
+      });
+    }
+
+    const room = await safeQuery((db) =>
+      db.room.findUnique({
+        where: { roomCode: req.params.roomCode.toUpperCase() },
+        select: { id: true, hostId: true, isActive: true, movieId: true },
+      }),
+    );
+
+    if (!room || !room.isActive || room.movieId) {
+      return res.status(404).json({ message: "Active stream not found" });
+    }
+
+    if (room.hostId !== req.user.userId) {
+      return res.status(403).json({
+        message: "Only the stream host can update its title",
+      });
+    }
+
+    await safeQuery((db) =>
+      db.room.update({
+        where: { id: room.id },
+        data: { streamTitle },
+      }),
+    );
+
+    res.status(200).json({ message: "Stream title updated", streamTitle });
+  } catch (error) {
+    console.error("Update P2P stream title error:", error);
+    res.status(500).json({ message: "Failed to update stream title" });
   }
 });
 
@@ -267,7 +313,7 @@ router.post("/:roomCode/close", protect, async (req, res) => {
     await safeQuery((db) =>
       db.room.update({
         where: { id: room.id },
-        data: { isActive: false },
+        data: { isActive: false, streamTitle: null },
       }),
     );
 
@@ -322,7 +368,7 @@ router.post("/:roomCode/leave", protect, async (req, res) => {
       await safeQuery((db) =>
         db.room.update({
           where: { id: room.id },
-          data: { isActive: false },
+          data: { isActive: false, streamTitle: null },
         }),
       );
       await safeQuery((db) =>

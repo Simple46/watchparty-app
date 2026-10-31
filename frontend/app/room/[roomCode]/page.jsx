@@ -156,14 +156,22 @@ function WatchRoomContent() {
   // ─────────────────────────────────────
   useEffect(() => {
     const handleBeforeUnload = () => {
-      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/rooms/${roomCode}/leave`;
+      const baseUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL;
       const token = localStorage.getItem("watchparty_token");
 
-      if (navigator.sendBeacon && token) {
-        const blob = new Blob([JSON.stringify({})], {
-          type: "application/json",
+      if (baseUrl && token) {
+        fetch(`${baseUrl}/api/rooms/${roomCode}/leave`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+          keepalive: true,
+        }).catch((err) => {
+          console.error("Leave room during page close failed:", err);
         });
-        navigator.sendBeacon(url, blob);
       }
 
       disconnectSocket();
@@ -231,7 +239,9 @@ function WatchRoomContent() {
 
           <div className="min-w-0">
             <p className="text-white font-semibold text-sm truncate">
-              {roomData?.movie?.title || "Watch Party"}
+              {roomData?.movie?.title ||
+                roomData?.streamTitle ||
+                "Watch Party"}
             </p>
             <div className="flex items-center gap-2 mt-0.5">
               <div

@@ -263,10 +263,10 @@ function HomePageContent() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-white transition group-hover:text-red-200">
-                      {stream.host?.name || "Community stream"}
+                      {stream.streamTitle}
                     </p>
                     <p className="mt-1 text-xs text-gray-500">
-                      Streaming from their device
+                      Hosted by {stream.host?.name || "Community member"}
                     </p>
                     <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
                       <Users className="h-3.5 w-3.5" />

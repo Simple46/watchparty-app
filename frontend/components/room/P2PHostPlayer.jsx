@@ -18,6 +18,7 @@ import {
 import { getSocket } from "../../lib/socket";
 import useWebRTC from "../../hooks/useWebRTC";
 import { convertSubtitleToVtt } from "../../lib/subtitles";
+import api from "../../lib/api";
 
 export default function P2PHostPlayer({ roomCode }) {
   const [file, setFile] = useState(null);
@@ -32,6 +33,7 @@ export default function P2PHostPlayer({ roomCode }) {
   const [subtitleUrl, setSubtitleUrl] = useState("");
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
   const [subtitleError, setSubtitleError] = useState("");
+  const [streamTitleError, setStreamTitleError] = useState("");
 
   const videoRef = useRef(null);
   const hiddenVideoRef = useRef(null); // drives the stream
@@ -64,6 +66,21 @@ export default function P2PHostPlayer({ roomCode }) {
       if (!hiddenVideo) {
         if (!hadMovie) setFile(null);
         return;
+      }
+
+      const streamTitle =
+        selected.name.replace(/\.[^/.]+$/, "").trim() || "Untitled stream";
+      setStreamTitleError("");
+      try {
+        await api.patch(`/api/rooms/${roomCode}/stream-title`, {
+          title: streamTitle,
+        });
+      } catch (err) {
+        console.error("Update stream title error:", err);
+        setStreamTitleError(
+          err.response?.data?.message ||
+            "The video is playing, but its title could not be shown in Live streams.",
+        );
       }
 
       hiddenVideoRef.current = hiddenVideo;
@@ -460,6 +477,16 @@ export default function P2PHostPlayer({ roomCode }) {
         >
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <p>{webRTCError}</p>
+        </div>
+      )}
+
+      {streamTitleError && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <p>{streamTitleError}</p>
         </div>
       )}
 

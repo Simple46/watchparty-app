@@ -66,6 +66,7 @@ model Room {
   roomCode  String   @unique
   isActive  Boolean  @default(true)
   movieId   String?
+  streamTitle String?
   hostId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
