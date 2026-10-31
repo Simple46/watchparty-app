@@ -338,23 +338,11 @@ router.post("/create-p2p", protect, async (req, res) => {
       if (!existing) isUnique = true;
     }
 
-    // Create a placeholder movie record for the P2P room
-    const placeholderMovie = await safeQuery((db) =>
-      db.movie.create({
-        data: {
-          title: "P2P Stream",
-          videoUrl: "",
-          cloudinaryId: `p2p_${roomCode}`,
-          source: "p2p",
-        },
-      })
-    );
-
     const room = await safeQuery((db) =>
       db.room.create({
         data: {
           roomCode,
-          movieId: placeholderMovie.id,
+          movieId: null,
           hostId: req.user.userId,
           isActive: true,
         },

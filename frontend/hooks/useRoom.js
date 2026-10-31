@@ -60,7 +60,7 @@ export default function useRoom(roomCode, roomData) {
     if (amIHost) {
       socket.emit("create_room", {
         roomCode: currentRoomCode,
-        movieId: currentRoomData.movie.id,
+        movieId: currentRoomData.movie?.id || null,
         hostId: currentUser.id,
         user: {
           id: currentUser.id,

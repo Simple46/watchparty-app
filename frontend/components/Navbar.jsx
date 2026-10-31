@@ -2,39 +2,22 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
-
 
 import {
   Radio,
   Tv,
-  Search,
   User,
   LogOut,
   Settings,
-  Menu,
-  X,
   ChevronDown,
   Wifi,
 } from "lucide-react";
 
 export default function Navbar() {
   const { user, logout, isAdmin } = useAuth();
-  const router = useRouter();
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Handle search submit
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    router.push(`/?search=${encodeURIComponent(searchQuery.trim())}`);
-    setMenuOpen(false);
-  };
 
   return (
     <nav
@@ -63,40 +46,26 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* ─── SEARCH BAR (desktop) ─── */}
-          <form
-            onSubmit={handleSearch}
-            className="hidden md:flex flex-1 max-w-md"
-          >
-            <div className="relative w-full">
-              <Search
-                className="absolute left-3 top-1/2
-                                 -translate-y-1/2 w-4 h-4 text-gray-500"
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search movies..."
-                className="w-full bg-gray-900 text-white
-                           placeholder-gray-500 border border-gray-800
-                           rounded-lg pl-10 pr-4 py-2.5 text-sm
-                           focus:outline-none focus:border-red-500
-                           transition"
-              />
-            </div>
-          </form>
+          {/* ─── PRIMARY LINKS (desktop) ─── */}
+          <div className="hidden lg:flex items-center gap-1">
+            <Link
+              href="/stream/new"
+              className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-600/10 px-3 py-2 text-sm font-medium text-red-200 transition hover:border-red-500/50 hover:bg-red-600/20 hover:text-white"
+            >
+              <Wifi className="w-4 h-4" />
+              Stream
+            </Link>
+            <Link
+              href="/football"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 transition hover:bg-gray-900 hover:text-white"
+            >
+              <Radio className="w-4 h-4 text-red-400" />
+              Live Football
+            </Link>
+          </div>
 
           {/* ─── RIGHT SIDE ─── */}
           <div className="flex items-center gap-3">
-            {/* Mobile search icon */}
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="md:hidden text-gray-400 hover:text-white"
-            >
-              <Search className="w-5 h-5" />
-            </button>
-
             {user ? (
               // ─── Logged in user menu ───
               <div className="relative">
@@ -168,26 +137,6 @@ export default function Navbar() {
                           My Profile
                         </Link>
 
-                        <Link href="/stream/new">
-                          <button
-                            className="flex items-center gap-2 text-gray-400
-                     hover:text-white transition text-sm"
-                          >
-                            <Wifi className="w-4 h-4" />
-                            <span className="hidden sm:block">Stream</span>
-                          </button>
-                        </Link>
-
-                        <Link href="/football">
-                          <button
-                            className="flex items-center gap-2 text-gray-400
-                     hover:text-white transition text-sm p-2"
-                          >
-                            <Radio className="w-4 h-4" />
-                            <span className="block">Live Football</span>
-                          </button>
-                        </Link>
-
                         {/* Admin link — only shown to admins */}
                         {isAdmin && (
                           <Link
@@ -248,31 +197,24 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Mobile Search Bar */}
-        {menuOpen && (
-          <div className="md:hidden pb-4">
-            <form onSubmit={handleSearch}>
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2
-                                   -translate-y-1/2 w-4 h-4
-                                   text-gray-500"
-                />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search movies..."
-                  autoFocus
-                  className="w-full bg-gray-900 text-white
-                             placeholder-gray-500 border border-gray-800
-                             rounded-lg pl-10 pr-4 py-2.5 text-sm
-                             focus:outline-none focus:border-red-500"
-                />
-              </div>
-            </form>
-          </div>
-        )}
+        {/* ─── PRIMARY LINKS (mobile and tablet) ─── */}
+        <div className="flex items-center gap-2 pb-3 lg:hidden">
+          <Link
+            href="/stream/new"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-600/10 px-3 py-2 text-sm font-medium text-red-200 transition hover:bg-red-600/20 hover:text-white"
+          >
+            <Wifi className="w-4 h-4" />
+            Stream from device
+          </Link>
+          <Link
+            href="/football"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm font-medium text-gray-300 transition hover:border-gray-700 hover:text-white"
+          >
+            <Radio className="w-4 h-4 text-red-400" />
+            Live Football
+          </Link>
+        </div>
+
       </div>
     </nav>
   );

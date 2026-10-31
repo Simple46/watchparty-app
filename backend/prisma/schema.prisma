@@ -65,12 +65,12 @@ model Room {
   id        String   @id @default(uuid())
   roomCode  String   @unique
   isActive  Boolean  @default(true)
-  movieId   String
+  movieId   String?
   hostId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  movie   Movie        @relation(fields: [movieId], references: [id])
+  movie   Movie?       @relation(fields: [movieId], references: [id])
   host    User         @relation("HostedRooms", fields: [hostId], references: [id])
   members RoomMember[]
 }

@@ -5,6 +5,7 @@ router.get("/", async (req, res) => {
   try {
     const movies = await safeQuery((db) =>
       db.movie.findMany({
+        where: { source: { not: "p2p" } },
         orderBy: { createdAt: "desc" },
       }),
     );

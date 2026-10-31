@@ -56,7 +56,8 @@ function WatchRoomContent() {
 
   const searchParams = useSearchParams();
   const isP2PMode =
-    searchParams.get("mode") === "p2p" || roomData?.movie?.source === "p2p";
+    searchParams.get("mode") === "p2p" ||
+    (roomData !== null && !roomData.movie);
 
   // ─────────────────────────────────────
   // FETCH ROOM
@@ -141,12 +142,14 @@ function WatchRoomContent() {
       leaveRoom();
       await api.post(`/api/rooms/${roomCode}/leave`).catch(() => {});
       disconnectSocket();
-      router.push(`/movies/${roomData?.movie?.id || ""}`);
+      router.push(
+        isP2PMode ? "/" : `/movies/${roomData?.movie?.id || ""}`,
+      );
     } catch (err) {
       console.error("Leave room error:", err);
       router.push("/");
     }
-  }, [leaveRoom, roomCode, roomData, router]);
+  }, [isP2PMode, leaveRoom, roomCode, roomData, router]);
 
   // ─────────────────────────────────────
   // TAB CLOSE / REFRESH

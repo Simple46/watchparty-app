@@ -13,6 +13,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Calendar,
+  Search,
+  X,
 } from "lucide-react";
 
 function FootballContent() {
@@ -23,6 +25,7 @@ function FootballContent() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("live");
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [clubSearch, setClubSearch] = useState("");
 
   const fetchMatches = useCallback(async () => {
     try {
@@ -240,6 +243,14 @@ function FootballContent() {
       : activeTab === "upcoming"
         ? upcomingMatches
         : finishedMatches;
+  const searchTerm = clubSearch.trim().toLocaleLowerCase();
+  const filteredMatches = searchTerm
+    ? activeMatches.filter((match) =>
+        [match.home_name, match.away_name].some((club) =>
+          club?.toLocaleLowerCase().includes(searchTerm),
+        ),
+      )
+    : activeMatches;
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -329,6 +340,29 @@ function FootballContent() {
           </div>
         </div>
 
+        {/* Search by either club in the selected match category */}
+        <div className="relative mb-4 sm:mb-6">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={clubSearch}
+            onChange={(event) => setClubSearch(event.target.value)}
+            placeholder="Search clubs in these matches..."
+            aria-label="Search clubs"
+            className="w-full rounded-xl border border-gray-800 bg-gray-900 py-3 pl-10 pr-10 text-sm text-white placeholder:text-gray-500 transition focus:border-red-500 focus:outline-none"
+          />
+          {clubSearch && (
+            <button
+              type="button"
+              onClick={() => setClubSearch("")}
+              aria-label="Clear club search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-500 transition hover:bg-gray-800 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
         {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3">
@@ -361,32 +395,36 @@ function FootballContent() {
         {/* Matches Grid */}
         {!loading && !error && (
           <div>
-            {activeMatches.length === 0 ? (
+            {filteredMatches.length === 0 ? (
               <div className="text-center py-12 sm:py-16">
                 <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-900 border border-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Trophy className="w-6 h-6 sm:w-7 sm:h-7 text-gray-600" />
                 </div>
                 <p className="text-white font-medium text-sm sm:text-base mb-1">
-                  No {activeTab} matches
+                  {searchTerm ? "No matching clubs" : `No ${activeTab} matches`}
                 </p>
                 <p className="text-gray-500 text-xs sm:text-sm mb-4">
-                  {activeTab === "live"
-                    ? "Check upcoming tab for scheduled matches"
-                    : "Check back later"}
+                  {searchTerm
+                    ? `No ${activeTab} matches include "${clubSearch.trim()}". Try another club name.`
+                    : activeTab === "live"
+                      ? "Check upcoming tab for scheduled matches"
+                      : "Check back later"}
                 </p>
-                {activeTab === "live" && upcomingMatches.length > 0 && (
-                  <button
-                    onClick={() => setActiveTab("upcoming")}
-                    className="flex items-center gap-2 mx-auto text-red-400 hover:text-red-300 text-xs sm:text-sm transition"
-                  >
-                    See upcoming matches
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                )}
+                {!searchTerm &&
+                  activeTab === "live" &&
+                  upcomingMatches.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab("upcoming")}
+                      className="flex items-center gap-2 mx-auto text-red-400 hover:text-red-300 text-xs sm:text-sm transition"
+                    >
+                      See upcoming matches
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                {activeMatches.map((match) => (
+                {filteredMatches.map((match) => (
                   <MatchCard key={match.id} match={match} />
                 ))}
               </div>
